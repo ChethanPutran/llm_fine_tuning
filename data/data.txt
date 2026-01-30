@@ -1,0 +1,4 @@
+1. AG News (text classification)
+2. SQuAD (question answering)
+3. GLUE Benchmark (multiple NLP tasks)
+4. Custom domain data (medical, legal, scientific)
