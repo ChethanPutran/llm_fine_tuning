@@ -11,6 +11,16 @@ class EfficientFineTuning:
         self.model_name = model_name
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.config = AutoConfig.from_pretrained(model_name)
+
+
+        
+class EfficientFineTuning:
+    """Compare different efficient fine-tuning methods"""
+    
+    def __init__(self, model_name='bert-base-uncased'):
+        self.model_name = model_name
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.config = AutoConfig.from_pretrained(model_name)
         
     def create_base_model(self):
         """Create base model for fine-tuning"""

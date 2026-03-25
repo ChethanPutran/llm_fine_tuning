@@ -1,0 +1,21 @@
+[project]
+name = "llm-fine-tuning"
+version = "0.1.0"
+description = "A project for fine-tuning LLMs"
+authors = ["Chethan <chethansputran222@gmail.com>"]
+[tool.poetry.dependencies]
+python = "^3.8"
+transformers = "^4.0.0"
+datasets = "^1.0.0"
+torch = "^1.7.0"    
+[tool.poetry.dev-dependencies]
+pytest = "^6.0.0"
+black = "^21.0.0"
+isort = "^5.0.0"
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"   
+[tool.poetry]
+packages = [
+    { include = "llm_fine_tuning" }
+]

@@ -6,6 +6,101 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+class BERT:
+    """BERT model with attention analysis capabilities"""
+    
+    def __init__(self, model_name='bert-base-uncased'):
+        from transformers import BertModel, BertTokenizer
+        self.tokenizer = BertTokenizer.from_pretrained(model_name)
+        self.model = BertModel.from_pretrained(model_name, output_attentions=True)
+        self.model.eval()
+
+    def analyze_attention(self, text):
+        """Analyze attention patterns for given text"""
+        inputs = self.tokenizer(text, return_tensors='pt', truncation=True, padding=True)
+        
+        with torch.no_grad():
+            outputs = self.model(**inputs)
+        
+        attentions = outputs.attentions  # List of [batch, heads, seq_len, seq_len]
+        tokens = self.tokenizer.convert_ids_to_tokens(inputs['input_ids'][0])
+        
+        return {
+            'attentions': attentions,
+            'tokens': tokens
+        }
+    def visualize_attention(self, attentions, tokens, layer_idx=-1, head_idx=0):
+        """Visualize attention patterns for specific layer and head"""
+        if layer_idx < 0:
+            layer_idx = len(attentions) + layer_idx
+        
+        attention = attentions[layer_idx][0, head_idx].cpu().numpy()  # [seq_len, seq_len]
+        
+        fig = go.Figure(data=go.Heatmap(
+            z=attention,
+            x=tokens,
+            y=tokens,
+            colorscale='Viridis',
+            colorbar=dict(title="Attention Weight")
+        ))
+        
+        fig.update_layout(
+            title=f'Attention Pattern - Layer {layer_idx}, Head {head_idx}',
+            xaxis_title='Key Tokens',
+            yaxis_title='Query Tokens',
+            height=600
+        )
+        
+        return fig
+
+class GPT2:
+    """GPT-2 model with attention analysis capabilities"""
+    
+    def __init__(self, model_name='gpt2'):
+        from transformers import GPT2Model, GPT2Tokenizer
+        self.tokenizer = GPT2Tokenizer.from_pretrained(model_name)
+        self.model = GPT2Model.from_pretrained(model_name, output_attentions=True)
+        self.model.eval()
+
+    def analyze_attention(self, text):
+        """Analyze attention patterns for given text"""
+        inputs = self.tokenizer(text, return_tensors='pt', truncation=True, padding=True)
+        
+        with torch.no_grad():
+            outputs = self.model(**inputs)
+        
+        attentions = outputs.attentions  # List of [batch, heads, seq_len, seq_len]
+        tokens = self.tokenizer.convert_ids_to_tokens(inputs['input_ids'][0])
+        
+        return {
+            'attentions': attentions,
+            'tokens': tokens
+        }
+    
+    def visualize_attention(self, attentions, tokens, layer_idx=-1, head_idx=0):
+        """Visualize attention patterns for specific layer and head"""
+        if layer_idx < 0:
+            layer_idx = len(attentions) + layer_idx
+        
+        attention = attentions[layer_idx][0, head_idx].cpu().numpy()  # [seq_len, seq_len]
+        
+        fig = go.Figure(data=go.Heatmap(
+            z=attention,
+            x=tokens,
+            y=tokens,
+            colorscale='Viridis',
+            colorbar=dict(title="Attention Weight")
+        ))
+        
+        fig.update_layout(
+            title=f'Attention Pattern - Layer {layer_idx}, Head {head_idx}',
+            xaxis_title='Key Tokens',
+            yaxis_title='Query Tokens',
+            height=600
+        )
+        
+        return fig
+
 class MiniTransformer(nn.Module):
     """
     Simplified Transformer implementation for educational purposes
@@ -78,6 +173,8 @@ class MiniTransformer(nn.Module):
         # Transformer expects mask where 0 means attend, 1 means ignore
         # Convert from 1=attend, 0=ignore to opposite
         key_padding_mask = (1 - attention_mask).bool()
+
+        
         
         # Pass through transformer
         if return_attentions:
@@ -85,24 +182,38 @@ class MiniTransformer(nn.Module):
             outputs = []
             attentions = []
             x = embeddings
+
+            causal_mask = torch.triu(
+            torch.ones(seq_len, seq_len, device=x.device), diagonal=1).bool()
             
+            # Manually pass through each layer to capture attentions
             for layer in self.transformer.layers:
                 # Self-attention
                 attn_output, attn_weights = layer.self_attn(
                     x, x, x,
-                    key_padding_mask=key_padding_mask,
-                    need_weights=True
-                )
+                    attn_mask=causal_mask,
+                    key_padding_mask=key_padding_mask)
+                # Dropout after attention
                 attn_output = layer.dropout1(attn_output)
+
+                # Residual connection
                 x = x + attn_output
+
+                # Layer norm
                 x = layer.norm1(x)
                 
                 # Feedforward
                 ff_output = layer.linear2(
                     layer.dropout(layer.activation(layer.linear1(x)))
                 )
+
+                # Dropout after feedforward
                 ff_output = layer.dropout2(ff_output)
+
+                # Residual connection
                 x = x + ff_output
+
+                # Layer norm
                 x = layer.norm2(x)
                 
                 outputs.append(x)

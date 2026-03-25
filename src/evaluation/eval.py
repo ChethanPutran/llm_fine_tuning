@@ -1,3 +1,16 @@
+from nltk.translate.bleu_score import sentence_bleu, corpus_bleu
+from nltk.translate.meteor_score import meteor_score
+from rouge import Rouge
+import nltk
+import numpy as np
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+from transformers import AutoTokenizer
+import time
+import psutil
+import torch
+
+
 class LLMEvaluation:
     """Comprehensive evaluation framework for LLMs"""
     
@@ -6,10 +19,7 @@ class LLMEvaluation:
         
     def traditional_metrics(self, predictions, references):
         """Calculate traditional NLP metrics"""
-        from nltk.translate.bleu_score import sentence_bleu, corpus_bleu
-        from nltk.translate.meteor_score import meteor_score
-        from rouge import Rouge
-        import nltk
+        
         
         # Ensure nltk data is available
         try:
@@ -58,9 +68,6 @@ class LLMEvaluation:
         
         # Perplexity (simplified)
         try:
-            # Calculate cross-entropy loss
-            from transformers import AutoTokenizer, AutoModelForCausalLM
-            
             # This would require a proper language model
             # For demo, return placeholder
             results['perplexity'] = None
@@ -72,7 +79,7 @@ class LLMEvaluation:
     def llm_based_evaluation(self, predictions, references, 
                            questions=None, evaluator_model='gpt-3.5-turbo'):
         """Use LLM as evaluator"""
-        import openai
+        
         
         # This requires OpenAI API key
         # For demo, return simulated results
@@ -86,13 +93,12 @@ class LLMEvaluation:
         }
         
         # In practice, you would call OpenAI API like:
-        """
         prompt = f"""
         Evaluate the following answer:
         
-        Question: {question}
-        Reference Answer: {reference}
-        Model Answer: {prediction}
+        Questions: {questions}
+        Reference Answers: {references}
+        Model Answers: {predictions}
         
         Please rate on a scale of 1-5:
         1. Factual Accuracy
@@ -105,15 +111,12 @@ class LLMEvaluation:
         """
         
         # response = openai.ChatCompletion.create(...)
-        """
         
         return simulated_results
     
     def efficiency_metrics(self, model, input_text, device='cuda'):
         """Measure model efficiency"""
-        import time
-        import psutil
-        import torch
+        
         
         metrics = {}
         

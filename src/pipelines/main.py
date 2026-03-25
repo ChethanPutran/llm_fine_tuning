@@ -1,3 +1,11 @@
+from ..model.classic import ClassicalNLP
+from ..model.transformer import AttentionAnalyzer
+from ..fine_tuning.tune import EfficientFineTuning
+from ..rag.rag import RAGSystem
+from ..evaluation.eval import LLMEvaluation
+from ..deployment.optim import DeploymentOptimizer
+from ..data.datasets import CustomDataset
+
 def main():
     """Main pipeline for LLM fine-tuning project"""
     print("=== LLM Fine-Tuning & Optimization Project ===\n")
@@ -37,9 +45,7 @@ def main():
     # 3. Efficient Fine-Tuning Comparison
     print("\n3. Comparing Efficient Fine-Tuning Methods...")
     
-    # For demo, create synthetic dataset
-    from datasets import Dataset
-    import torch
+
     
     # Create synthetic dataset
     train_data = {
