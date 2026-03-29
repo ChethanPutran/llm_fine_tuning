@@ -1,0 +1,42 @@
+{
+  "name": "llm-finetuning-platform-frontend",
+  "version": "1.0.0",
+  "description": "Frontend for LLM Fine-tuning Platform",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "dev:debug": "vite --host --mode development",
+    "build": "vite build",
+    "build:debug": "vite build --minify false",
+    "preview": "vite preview",
+    "lint": "eslint .",
+    "docker-build": "docker build -t llm-frontend .",
+    "docker-run": "docker run -p 3000:3000 llm-frontend"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.11.0",
+    "@emotion/styled": "^11.11.0",
+    "@mui/icons-material": "^6.0.0",
+    "@mui/material": "^6.0.0",
+    "axios": "^1.14.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-router-dom": "^7.13.2",
+    "recharts": "^3.8.1",
+    "socket.io-client": "^4.8.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "eslint": "^9.39.4",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.4.0",
+    "vite": "^8.0.1"
+  }
+}
+
+ 
