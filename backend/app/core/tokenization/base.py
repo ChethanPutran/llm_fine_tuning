@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Union
+from typing import List, Dict, Any, Optional, Union
 import numpy as np
 
 class BaseTokenizer(ABC):
@@ -17,7 +17,7 @@ class BaseTokenizer(ABC):
         pass
     
     @abstractmethod
-    def encode(self, text: str) -> List[int]:
+    def encode(self, text: str, max_length: Optional[int] = None) -> List[int]:
         """Encode text to token IDs"""
         pass
     

@@ -1,105 +1,97 @@
-from fastapi import APIRouter, HTTPException, BackgroundTasks
-from typing import Dict, Any, List
-import uuid
-from app.core.optimization.optimizer_factory import OptimizerFactory
-from app.core.config import settings
-from ..models import OptimizationRequest, JobResponse
+# app/api/routes/optimization.py
+
+from fastapi import APIRouter, Depends, HTTPException
+from typing import Dict, Any, List, Optional
+from pydantic import BaseModel, Field
+import logging
+
+from app.dependencies.controller import get_optimization_controller
+from app.controllers.optimization_controller import OptimizationController
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/optimization", tags=["optimization"])
 
-# Store optimization jobs
-optimizations = {}
 
-class OptimizationJob:
-    def __init__(self, job_id: str, request: OptimizationRequest):
-        self.job_id = job_id
-        self.request = request
-        self.status = "pending"
-        self.progress = 0
-        self.result = None
-        self.error = None
+class StartOptimizationRequest(BaseModel):
+    """Request model for starting optimization"""
+    model_path: str = Field(..., description="Path to the model to optimize")
+    optimization_type: str = Field(..., description="Type of optimization (pruning, quantization, distillation)")
+    config: Dict[str, Any] = Field(default_factory=dict, description="Optimization configuration")
 
-@router.post("/optimize", response_model=JobResponse)
+
+@router.post("/optimize", response_model=Dict[str, Any])
 async def optimize_model(
-    background_tasks: BackgroundTasks,
-    request: OptimizationRequest
+    request: StartOptimizationRequest,
+    controller: OptimizationController = Depends(get_optimization_controller)
 ):
     """Optimize a model"""
-    job_id = str(uuid.uuid4())
-    optimizations[job_id] = OptimizationJob(job_id, request)
-    
-    background_tasks.add_task(
-        run_optimization,
-        job_id,
-        request
-    )
-    
-    return JobResponse(job_id=job_id, status="started", message="Optimization job started")
+    try:
+        result = await controller.start_job(
+            model_path=request.model_path,
+            optimization_type=request.optimization_type,
+            config=request.config
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to start optimization: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get("/status/{job_id}", response_model=Dict[str, Any])
-async def get_status(job_id: str):
-    """Get optimization status"""
-    job = optimizations.get(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Optimization job not found")
-    
-    return {
-        "status": job.status,
-        "progress": job.progress,
-        "result": job.result,
-        "error": job.error
-    }
+async def get_optimization_status(
+    job_id: str,
+    controller: OptimizationController = Depends(get_optimization_controller)
+):
+    """Get optimization job status"""
+    status = await controller.get_job_status(job_id)
+    if not status:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return status
+
+
+@router.get("/jobs", response_model=Dict[str, Any])
+async def list_optimization_jobs(
+    limit: int = 50,
+    offset: int = 0,
+    status: Optional[str] = None,
+    controller: OptimizationController = Depends(get_optimization_controller)
+):
+    """List all optimization jobs"""
+    return await controller.list_jobs(limit=limit, offset=offset, status=status)
+
+
+@router.delete("/jobs/{job_id}", response_model=Dict[str, Any])
+async def cancel_optimization_job(
+    job_id: str,
+    controller: OptimizationController = Depends(get_optimization_controller)
+):
+    """Cancel an optimization job"""
+    cancelled = await controller.cancel_job(job_id)
+    if cancelled:
+        return {"message": "Job cancelled successfully", "job_id": job_id}
+    raise HTTPException(status_code=400, detail="Job cannot be cancelled or not found")
+
 
 @router.get("/types", response_model=List[str])
 async def get_optimization_types():
     """Get available optimization types"""
-    return ["pruning", "distillation", "quantization"]
+    return ["pruning", "quantization", "distillation"]
 
-async def run_optimization(job_id: str, request: OptimizationRequest):
-    """Background task for model optimization"""
-    job = optimizations[job_id]
-    job.status = "running"
+
+@router.get("/metrics/{job_id}", response_model=Dict[str, Any])
+async def get_optimization_metrics(
+    job_id: str,
+    controller: OptimizationController = Depends(get_optimization_controller)
+):
+    """Get detailed optimization metrics"""
+    status = await controller.get_job_status(job_id)
+    if not status:
+        raise HTTPException(status_code=404, detail="Job not found")
     
-    try:
-        # Update progress
-        job.progress = 10
-        
-        # Get optimizer
-        optimizer = OptimizerFactory.get_optimizer(
-            request.optimization_type,
-            request.config
-        )
-        
-        job.progress = 30
-        
-        # Load model
-        model = optimizer.load_model(request.model_path)
-        
-        job.progress = 50
-        
-        # Apply optimization
-        optimized_model = optimizer.optimize(model)
-        
-        job.progress = 80
-        
-        # Save optimized model
-        output_path = f"{settings.MODEL_STORAGE_PATH}/optimized/{job_id}"
-        optimizer.save_model(optimized_model, output_path)
-        
-        # Get metrics
-        metrics = optimizer.get_metrics(optimized_model)
-        
-        job.result = {
-            "output_path": output_path,
-            "optimization_type": request.optimization_type,
-            "metrics": metrics,
-            "original_size": optimizer.original_size,
-            "optimized_size": optimizer.optimized_size,
-            "compression_ratio": optimizer.original_size / optimizer.optimized_size if optimizer.optimized_size > 0 else 0
-        }
-        job.status = "completed"
-        job.progress = 100
-        
-    except Exception as e:
-        job.status = "failed"
-        job.error = str(e)
+    if status.get("status") != "completed":
+        raise HTTPException(status_code=400, detail="Job not completed yet")
+    
+    return status.get("metrics", {})

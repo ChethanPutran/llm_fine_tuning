@@ -16,6 +16,12 @@ class Settings(BaseSettings):
     ENVIRONMENT: Environment = Environment.DEVELOPMENT
     DEBUG: bool = True
     SECRET_KEY: str = "your-secret-key-here-change-this-in-production"
+
+
+    # Pipeline and Execution
+    PIPELINE_WORKERS: int = 4
+    PIPELINE_QUEUE_MAX_SIZE: int = 100
+    PIPELINE_EXECUTION_TIMEOUT: int = 3600  # seconds
     
     # Database
     DATABASE_URL: str = "sqlite:///./llm_platform.db"

@@ -1,0 +1,17 @@
+SOLID Principles:
+
+Single Responsibility: Each class has one clear purpose
+Open/Closed: Strategies and handlers can be extended without modification
+Liskov Substitution: All strategy implementations are interchangeable
+Interface Segregation: Abstract base classes define minimal interfaces
+Dependency Inversion: High-level modules depend on abstractions
+
+Design Patterns:
+
+Strategy: Scheduling algorithms, retry strategies, storage backends
+Observer: Event handling in executor
+Singleton: Queue, resource manager, coordinator
+Command: Job execution as commands
+Facade: AsyncExecutor wraps complex subsystems
+Factory: Job creation patterns
+State: Pipeline and job state management

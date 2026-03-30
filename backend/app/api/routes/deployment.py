@@ -1,154 +1,109 @@
-from fastapi import APIRouter, HTTPException, BackgroundTasks
-from typing import Dict, Any, List
-import uuid
-from datetime import datetime
-import asyncio
-from app.core.deployment.deployment_pipeline import DeploymentPipeline
-from app.core.deployment.torchserve import TorchServeDeployment
-from app.core.deployment.tensorflow_serving import TensorFlowServing
-from app.core.deployment.onnx import ONNXDeployment
-from app.core.config import settings
-from ..models import DeploymentRequest, DeploymentInfo, JobResponse
+# app/api/routes/deployment.py
+
+from fastapi import APIRouter, Depends, HTTPException
+from typing import Dict, Any, List, Optional
+from pydantic import BaseModel, Field
+import logging
+
+from app.dependencies.controller import get_deployment_controller
+from app.controllers.deployment_controller import DeploymentController
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/deployment", tags=["deployment"])
 
-# Store deployment jobs
-deployments = {}
 
-class DeploymentJob:
-    def __init__(self, job_id: str, request: DeploymentRequest):
-        self.job_id = job_id
-        self.request = request
-        self.status = "pending"
-        self.progress = 0
-        self.result = None
-        self.error = None
-        self.deployment_id = None
+class StartDeploymentRequest(BaseModel):
+    """Request model for starting deployment"""
+    model_path: str = Field(..., description="Path to the model to deploy")
+    serving_framework: str = Field(..., description="Framework for serving (torchserve, tensorflow-serving, onnx)")
+    deployment_target: str = Field("local", description="Deployment target (local, cloud, edge)")
+    config: Dict[str, Any] = Field(default_factory=dict, description="Deployment configuration")
 
-@router.post("/deploy", response_model=JobResponse)
+
+@router.post("/deploy", response_model=Dict[str, Any])
 async def deploy_model(
-    background_tasks: BackgroundTasks,
-    request: DeploymentRequest
+    request: StartDeploymentRequest,
+    controller: DeploymentController = Depends(get_deployment_controller)
 ):
     """Deploy a model"""
-    job_id = str(uuid.uuid4())
-    deployments[job_id] = DeploymentJob(job_id, request)
-    
-    background_tasks.add_task(
-        run_deployment,
-        job_id,
-        request
-    )
-    
-    return JobResponse(job_id=job_id, status="started", message="Deployment started")
+    try:
+        result = await controller.start_job(
+            model_path=request.model_path,
+            serving_framework=request.serving_framework,
+            deployment_target=request.deployment_target,
+            config=request.config
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to start deployment: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get("/status/{job_id}", response_model=Dict[str, Any])
-async def get_status(job_id: str):
-    """Get deployment status"""
-    job = deployments.get(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Deployment job not found")
-    
-    return {
-        "status": job.status,
-        "progress": job.progress,
-        "result": job.result,
-        "error": job.error,
-        "deployment_id": job.deployment_id
-    }
+async def get_deployment_status(
+    job_id: str,
+    controller: DeploymentController = Depends(get_deployment_controller)
+):
+    """Get deployment job status"""
+    status = await controller.get_job_status(job_id)
+    if not status:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return status
+
+
+@router.get("/jobs", response_model=Dict[str, Any])
+async def list_deployment_jobs(
+    limit: int = 50,
+    offset: int = 0,
+    status: Optional[str] = None,
+    controller: DeploymentController = Depends(get_deployment_controller)
+):
+    """List all deployment jobs"""
+    return await controller.list_jobs(limit=limit, offset=offset, status=status)
+
+
+@router.get("/list", response_model=List[Dict[str, Any]])
+async def list_deployments(
+    controller: DeploymentController = Depends(get_deployment_controller)
+):
+    """List all active deployments"""
+    return await controller.list_deployments()
+
+
+@router.delete("/{deployment_id}", response_model=Dict[str, Any])
+async def undeploy_model(
+    deployment_id: str,
+    controller: DeploymentController = Depends(get_deployment_controller)
+):
+    """Undeploy a model"""
+    undeployed = await controller.undeploy_model(deployment_id)
+    if undeployed:
+        return {"status": "undeployed", "deployment_id": deployment_id}
+    raise HTTPException(status_code=404, detail="Deployment not found")
+
+
+@router.delete("/jobs/{job_id}", response_model=Dict[str, Any])
+async def cancel_deployment_job(
+    job_id: str,
+    controller: DeploymentController = Depends(get_deployment_controller)
+):
+    """Cancel a deployment job"""
+    cancelled = await controller.cancel_job(job_id)
+    if cancelled:
+        return {"message": "Job cancelled successfully", "job_id": job_id}
+    raise HTTPException(status_code=400, detail="Job cannot be cancelled or not found")
+
 
 @router.get("/targets", response_model=List[str])
 async def get_deployment_targets():
     """Get available deployment targets"""
     return ["local", "cloud", "edge"]
 
+
 @router.get("/frameworks", response_model=List[str])
 async def get_serving_frameworks():
     """Get available serving frameworks"""
     return ["torchserve", "tensorflow-serving", "onnx"]
-
-@router.get("/list", response_model=List[DeploymentInfo])
-async def list_deployments():
-    """List all active deployments"""
-    active_deployments = []
-    for job_id, job in deployments.items():
-        if job.status == "completed":
-            active_deployments.append(DeploymentInfo(
-                deployment_id=job.deployment_id or job_id,
-                endpoint=job.result.get("endpoint", ""),
-                framework=job.request.serving_framework,
-                status=job.status,
-                model_path=job.request.model_path,
-                config=job.request.config,
-                created_at=datetime.now()
-            ))
-    return active_deployments
-
-@router.delete("/{deployment_id}")
-async def undeploy_model(deployment_id: str):
-    """Undeploy a model"""
-    # Find and stop the deployment
-    for job_id, job in deployments.items():
-        if job.deployment_id == deployment_id:
-            # Stop the deployment
-            await stop_deployment(job)
-            return {"status": "undeployed", "deployment_id": deployment_id}
-    
-    raise HTTPException(status_code=404, detail="Deployment not found")
-
-async def run_deployment(job_id: str, request: DeploymentRequest):
-    """Background task for model deployment"""
-    job = deployments[job_id]
-    job.status = "running"
-    
-    try:
-        # Update progress
-        job.progress = 10
-        
-        # Create deployment pipeline
-        pipeline = DeploymentPipeline(request.config)
-        
-        # Select deployment strategy
-        if request.serving_framework == "torchserve":
-            deployer = TorchServeDeployment(request.config)
-        elif request.serving_framework == "tensorflow-serving":
-            deployer = TensorFlowServing(request.config)
-        elif request.serving_framework == "onnx":
-            deployer = ONNXDeployment(request.config)
-        else:
-            raise ValueError(f"Unsupported framework: {request.serving_framework}")
-        
-        job.progress = 30
-        
-        # Deploy model
-        deployment_info = await deployer.deploy(
-            request.model_path,
-            request.deployment_target
-        )
-        
-        job.progress = 80
-        
-        # Add to pipeline
-        pipeline.add_deployment(deployer)
-        result = pipeline.execute()
-        
-        job.result = {
-            "endpoint": deployment_info.get("endpoint"),
-            "model_id": deployment_info.get("model_id"),
-            "status": "active",
-            "deployment_info": deployment_info,
-            "pipeline_result": result
-        }
-        job.deployment_id = deployment_info.get("model_id", job_id)
-        job.status = "completed"
-        job.progress = 100
-        
-    except Exception as e:
-        job.status = "failed"
-        job.error = str(e)
-
-async def stop_deployment(job: DeploymentJob):
-    """Stop a deployment"""
-    if job.result and "deployment_info" in job.result:
-        # Call undeploy on the deployer
-        job.status = "stopped"
