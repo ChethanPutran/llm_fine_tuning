@@ -1,8 +1,8 @@
 from abc import ABC, abstractmethod
 from pyspark.sql import DataFrame
-from app.core.spark_manager import SparkManager
+from app.core.preprocessing.spark_manager import SparkManager
 import asyncio
-from typing import List, TYPE_CHECKING
+from typing import Any, Dict, List, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from pyspark.sql import SparkSession
@@ -37,7 +37,7 @@ class BasePipeline:
         self.processors: List[BaseProcessor] = []
 
     @classmethod
-    async def create(cls, spark: 'SparkSession' = None):
+    async def create(cls, spark: 'SparkSession', config: Dict[str, Any]):
         spark = spark or await SparkManager.get_session()
         return cls(spark)
 

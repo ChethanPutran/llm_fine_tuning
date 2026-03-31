@@ -17,9 +17,9 @@ class BaseController(ABC):
         self._jobs: Dict[UUID, Any] = {}  # Use UUID as key
     
     @abstractmethod
-    async def start_job(self, **kwargs) -> Dict[str, Any]:
+    async def add_job(self, **kwargs) -> Dict[str, Any]:
         """
-        Start a new job
+        Add a new job
         
         Args:
             **kwargs: Job-specific parameters
@@ -49,11 +49,6 @@ class BaseController(ABC):
     ) -> Dict[str, Any]:
         """List jobs with filters"""
         pass
-    
-    def _register_job(self, job_id: UUID, job: Any):
-        """Register a job in memory"""
-        self._jobs[job_id] = job
-        logger.debug(f"Job {job_id} registered in controller")
     
     def _get_job(self, job_id: UUID) -> Optional[Any]:
         """Get a job by ID"""

@@ -1,0 +1,144 @@
+/* src/styles/settings.css */
+
+.settings-container {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.settings-card {
+  transition: all 0.3s ease;
+}
+
+.settings-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+}
+
+.settings-section {
+  margin-bottom: 24px;
+  padding: 16px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.settings-divider {
+  margin: 24px 0;
+}
+
+.color-preview {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.color-preview:hover {
+  transform: scale(1.1);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.setting-tooltip {
+  font-size: 12px;
+  max-width: 200px;
+}
+
+.settings-save-button {
+  position: sticky;
+  bottom: 24px;
+  right: 24px;
+  float: right;
+  z-index: 1000;
+}
+
+/* Dark mode styles */
+body.dark-mode .settings-card {
+  background: #1e1e1e;
+  border-color: #333;
+}
+
+body.dark-mode .settings-section {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Responsive styles */
+@media (max-width: 600px) {
+  .settings-container {
+    padding: 16px;
+  }
+  
+  .settings-tabs {
+    overflow-x: auto;
+  }
+  
+  .settings-tabs .MuiTab-root {
+    min-width: auto;
+    padding: 8px 12px;
+  }
+}
+
+/* Loading animation */
+.settings-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 400px;
+}
+
+.settings-loading-spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Custom scrollbar */
+.settings-container::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.settings-container::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+.settings-container::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 4px;
+}
+
+.settings-container::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* Dark mode scrollbar */
+body.dark-mode .settings-container::-webkit-scrollbar-track {
+  background: #2d2d2d;
+}
+
+body.dark-mode .settings-container::-webkit-scrollbar-thumb {
+  background: #555;
+}
+
+body.dark-mode .settings-container::-webkit-scrollbar-thumb:hover {
+  background: #777;
+}

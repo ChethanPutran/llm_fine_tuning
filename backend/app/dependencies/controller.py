@@ -8,6 +8,7 @@ from app.controllers.training_controller import TrainingController
 from app.controllers.optimization_controller import OptimizationController
 from app.controllers.deployment_controller import DeploymentController
 from app.controllers.tokenization_controller import TokenizationController
+from app.controllers.pipeline_controller import PipelineController
 
 # Global orchestrator instance
 _orchestrator = None
@@ -41,6 +42,12 @@ def get_training_controller(
     """Get training controller instance"""
     return TrainingController(orchestrator)
 
+
+async def get_pipeline_controller(
+    orchestrator: PipelineOrchestrator = Depends(get_orchestrator)
+) -> PipelineController:
+    """Get pipeline controller instance"""
+    return PipelineController(orchestrator)
 
 def get_optimization_controller(
     orchestrator: PipelineOrchestrator = Depends(get_orchestrator)

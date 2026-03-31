@@ -18,7 +18,7 @@ class DataCollectionController(BaseController):
     def __init__(self, orchestrator):
         super().__init__(orchestrator)
 
-    async def start_job(
+    async def add_job(
         self,
         *,
         source: str,
@@ -43,136 +43,82 @@ class DataCollectionController(BaseController):
             tags: Optional tags for categorization
             **kwargs: Additional keyword arguments
         """
-        config = config or {}
         
         try:
-            # Clear any existing pipeline and build new one
-            self.orchestrator.clear_pipeline()
-            
-            # Add data collection node to pipeline
-            self.orchestrator.add_node_to_pipeline(
-                node_id="data_collector",
-                name=f"Collect {topic} from {source}",
-                node_type=NodeType.DATA_INGESTION,
-                config={
-                    "source": source,
-                    "topic": topic,
-                    "search_engine": search_engine,
-                    "limit": limit,
-                    "crawler_config": config
-                },
-                resources={"cpu": 1, "memory_gb": 2},
-                metadata={
-                    "job_type": "data_collection",
-                    "topic": topic,
-                    "source": source
-                },
-                retry_policy=config.get("retry_policy", {"retries": 3, "delay_seconds": 5}),
-                position=config.get("position", (0,0))
-
-            )
-            
+            config = config or {}
+            metadata = {
+            "node_id": "data_collector",
+            "name": f"Collect {topic} from {source}",
+            "node_type": NodeType.DATA_INGESTION,
+            "resources": {"cpu": 1, "memory_gb": 2},
+            "metadata": {
+                "source": source,
+                "topic": topic,
+                "search_engine": search_engine,
+                "limit": limit,
+                "crawler_config": config.get('crawler_config', {}),
+                "job_type": "data_collection"
+            },
+            "retry_policy": config.get("retry_policy", {"retries": 3, "delay_seconds": 5}),
+            "position": config.get("position", (0,0))
+            }
+        
             # Create data collection job
             job = JobFactory.create_data_collection_job(
                 source=source,
                 topic=topic,
                 search_engine=search_engine,
                 limit=limit,
-                config=config,
+                config=config or {},
                 user_id=user_id,
                 tags=tags or ["data_collection"]
             )
-            
-            # Register job
-            self._register_job(job.job_id, job)
-            
-            # Execute the pipeline
-            result = await self.orchestrator.execute_current_pipeline(
-                user_id=user_id,
-                priority=JobPriority.NORMAL
-            )
-            
-            # Link execution to job
-            execution_id = result.get("execution_id")
-            if execution_id:
-                job.execution_id = execution_id
-                job.mark_started()
-                self._update_job(job.job_id, execution_id=execution_id)
-            
-            logger.info(f"Data collection job {job.job_id} started for topic: {topic}")
+
+            # Register job with orchestrator
+            self.orchestrator.register_job(job, metadata)
             
             return {
                 "job_id": str(job.job_id),
-                "execution_id": str(execution_id) if execution_id else None,
-                "message": "Data collection job started successfully",
-                "status": "started",
-                "topic": topic,
-                "source": source
+                "message": "Data collection job created successfully",
             }
             
         except Exception as e:
             logger.error(f"Failed to start data collection job: {e}")
             raise
-
-    async def register_job(
-        self,
-        *,
-        source: str,
-        topic: str,
-        search_engine: str = "google",
-        limit: int = 100,
-        config: Optional[Dict[str, Any]] = None,
-        user_id: Optional[str] = None,
-        tags: Optional[List[str]] = None,
-        **kwargs
-    ) -> Dict[str, Any]:
+    
+    async def execute_job(self, job_id: str) -> Dict[str, Any]:
         """
-        Register a new data collection job
+        Execute a registered data collection job
         
         Args:
-            source: Data source (web, books, etc.)
-            topic: Topic to collect
-            search_engine: Search engine for web crawling
-            limit: Maximum number of documents
-            config: Additional configuration
-            user_id: User ID
-            tags: Optional tags for categorization
-            **kwargs: Additional keyword arguments
-        """
-        config = config or {}
+            job_id: Job ID to execute
         
+        Returns:
+            Execution result information
+        """
         try:
-            # Clear any existing pipeline and build new one
-            self.orchestrator.clear_pipeline()
+            job_uuid = UUID(job_id)
+            job = self._get_job(job_uuid)
             
-            # Add data collection node to pipeline
-            self.orchestrator.add_node_to_pipeline(
-                node_id="data_collector",
-                name=f"Collect {topic} from {source}",
-                node_type=NodeType.DATA_INGESTION,
-                config={
-                    "source": source,
-                    "topic": topic,
-                    "search_engine": search_engine,
-                    "limit": limit,
-                    "crawler_config": config
-                },
-                resources={"cpu": 1, "memory_gb": 2},
-                metadata={
-                    "job_type": "data_collection",
-                    "topic": topic,
-                    "source": source
-                },
-                retry_policy=config.get("retry_policy", {"retries": 3, "delay_seconds": 5}),
-                position=config.get("position", (0,0))
-
-            )
+            if not job:
+                logger.error(f"Job {job_id} not found for execution")
+                return {"error": "Job not found"}
+            
+            # Execute the job using orchestrator
+            execution_result = await self.orchestrator.execute_job(job.job_id)
+            
             return {
-                "message": "Pipeline built successfully"
+                "job_id": str(job.job_id),
+                "execution_id": str(execution_result.get("execution_id", "")),
+                "message": "Job execution started successfully"
             }
+            
+        except ValueError:
+            logger.error(f"Invalid job ID: {job_id}")
+            return {"error": "Invalid job ID"}
         except Exception as e:
-            logger.error(f"Failed to build pipeline for data collection: {e}")
-            raise 
+            logger.error(f"Failed to execute job: {e}")
+            return {"error": "Failed to execute job"}
 
     async def get_job_status(self, job_id: str) -> Optional[Dict[str, Any]]:
         """

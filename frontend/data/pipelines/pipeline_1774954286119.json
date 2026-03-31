@@ -1,0 +1,98 @@
+{
+  "pipeline": [
+    {
+      "id": "data_collection-1774954179132",
+      "type": "data_collection",
+      "name": "Data Collection",
+      "description": "Data Collection stage",
+      "config": {
+        "source": "web",
+        "limit": "100",
+        "max_depth": 2,
+        "timeout": 10,
+        "topic": "fh"
+      },
+      "color": "#2563eb",
+      "status": "completed",
+      "progress": 100,
+      "createdAt": "2026-03-31T10:49:39.132Z",
+      "metadata": {
+        "version": "1.0",
+        "timestamp": 1774954179132
+      }
+    },
+    {
+      "id": "preprocessing-1774954200693",
+      "type": "preprocessing",
+      "name": "Preprocessing",
+      "description": "Preprocessing stage",
+      "config": {
+        "clean_method": "standard",
+        "output_format": "parquet",
+        "dedup_threshold": 0.9,
+        "extract_entities": true,
+        "normalize_text": true,
+        "min_doc_length": 50,
+        "remove_stopwords": true,
+        "input_path": "t"
+      },
+      "color": "#7c3aed",
+      "status": "completed",
+      "progress": 100,
+      "createdAt": "2026-03-31T10:50:00.693Z",
+      "metadata": {
+        "version": "1.0",
+        "timestamp": 1774954200693
+      }
+    },
+    {
+      "id": "finetuning-1774954216205",
+      "type": "finetuning",
+      "name": "Fine-tuning",
+      "description": "Fine-tuning stage",
+      "config": {
+        "model_type": "bert",
+        "strategy": "lora",
+        "dataset": "general_instruction_tuning",
+        "task": "classification",
+        "learning_rate": 0.00002,
+        "num_epochs": 3,
+        "batch_size": "16",
+        "model_name": "t"
+      },
+      "color": "#db2777",
+      "status": "completed",
+      "progress": 100,
+      "createdAt": "2026-03-31T10:50:16.205Z",
+      "metadata": {
+        "version": "1.0",
+        "timestamp": 1774954216205
+      }
+    },
+    {
+      "id": "deployment-1774954227242",
+      "type": "deployment",
+      "name": "Deployment",
+      "description": "Deployment stage",
+      "config": {
+        "deployment_target": "local",
+        "serving_framework": "torchserve",
+        "replicas": 1,
+        "gpu_enabled": false
+      },
+      "color": "#10b981",
+      "status": "completed",
+      "progress": 100,
+      "createdAt": "2026-03-31T10:50:27.242Z",
+      "metadata": {
+        "version": "1.0",
+        "timestamp": 1774954227242
+      }
+    }
+  ],
+  "metadata": {
+    "version": "1.0",
+    "exportedAt": "2026-03-31T10:51:26.119Z",
+    "stageCount": 4
+  }
+}

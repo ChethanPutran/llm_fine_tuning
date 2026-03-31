@@ -75,6 +75,7 @@ class PipelineNode:
     end_time: Optional[datetime] = None
     error: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
+    job: Optional[Any] = None  # Reference to the actual job object, if applicable
     
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -134,3 +135,46 @@ class SchedulingContext:
     resource_availability: Dict[str, int]
     node_results: Dict[str, Any]
     
+
+
+@dataclass
+class VisualNode:
+    """Node with visual properties for UI rendering"""
+    node: PipelineNode
+    position: NodePosition = field(default_factory=NodePosition)
+    style: Dict[str, Any] = field(default_factory=dict)
+    selected: bool = False
+    collapsed: bool = False
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.node.id,
+            "name": self.node.name,
+            "type": self.node.type.value,
+            "position": self.position.to_dict(),
+            "style": self.style,
+            "selected": self.selected,
+            "collapsed": self.collapsed,
+            "status": self.node.status.value,
+            "config": self.node.config.parameters,
+            "metadata": self.node.metadata
+        }
+
+
+@dataclass
+class VisualEdge:
+    """Edge with visual properties for UI rendering"""
+    edge: PipelineEdge
+    style: Dict[str, Any] = field(default_factory=dict)
+    label: Optional[str] = None
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": f"{self.edge.source}_{self.edge.target}",
+            "source": self.edge.source,
+            "target": self.edge.target,
+            "condition": self.edge.condition,
+            "style": self.style,
+            "label": self.label
+        }
+

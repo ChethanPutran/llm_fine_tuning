@@ -1,3 +1,4 @@
+// src/main.jsx
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import ErrorBoundary from './Error.jsx';
@@ -10,11 +11,11 @@ const rootElement = document.getElementById('root');
 if (rootElement) {
   ReactDOM.createRoot(rootElement).render(
     <React.StrictMode>
-      <ErrorBoundary>
-        <StyledEngineProvider injectFirst>
+      <StyledEngineProvider injectFirst>
+        <ErrorBoundary>
           <App />
-        </StyledEngineProvider>
-      </ErrorBoundary>
+        </ErrorBoundary>
+      </StyledEngineProvider>
     </React.StrictMode>
   );
 }

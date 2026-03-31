@@ -1,11 +1,12 @@
 # app/api/routes/preprocessing.py
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field
 import json
 import os
 import logging
+from uuid import uuid4
 
 from app.core.config import settings
 from app.common.job_models import PreprocessingConfig
@@ -22,35 +23,71 @@ class StartPreprocessingRequest(BaseModel):
     input_path: str = Field(..., description="Path to input data")
     output_path: Optional[str] = Field(None, description="Output path (optional)")
     config: PreprocessingConfig = Field(..., description="Preprocessing configuration")
+    auto_execute: bool = Field(True, description="Automatically execute the job after creation")
+    tags: Optional[List[str]] = Field(None, description="Optional tags for categorization")
 
 
-@router.post("/start", response_model=Dict[str, Any])
-async def start_preprocessing(
+@router.post("/add", response_model=Dict[str, Any])
+async def create_preprocessing_job(
     request: StartPreprocessingRequest,
     controller: PreprocessingController = Depends(get_preprocessing_controller)
 ):
-    """Start a preprocessing job"""
+    """Create a preprocessing job"""
     try:
-        result = await controller.start_job(
+        # Create the job
+        result = await controller.add_job(
             input_path=request.input_path,
             config=request.config,
-            output_path=request.output_path
+            output_path=request.output_path,
+            user_id="system",  # In real implementation, get from auth context
+            tags=request.tags
         )
+        
+        # Auto-execute if requested
+        if request.auto_execute and result.get("job_id"):
+            job_id = result["job_id"]
+            execution_result = await controller.execute_job(job_id)
+            result["execution_id"] = execution_result.get("execution_id")
+            result["execution_status"] = "started"
+        
         return result
+        
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"Failed to start preprocessing: {e}")
+        logger.error(f"Failed to create preprocessing job: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/start-from-upload", response_model=Dict[str, Any])
-async def start_preprocessing_from_upload(
-    file: UploadFile = File(...),
-    config: str = Form(...),
+@router.post("/execute/{job_id}", response_model=Dict[str, Any])
+async def execute_preprocessing_job(
+    job_id: str,
     controller: PreprocessingController = Depends(get_preprocessing_controller)
 ):
-    """Start preprocessing from uploaded file"""
+    """Execute an existing preprocessing job"""
+    try:
+        result = await controller.execute_job(job_id)
+        
+        if result.get("error"):
+            raise HTTPException(status_code=404, detail=result["error"])
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to execute preprocessing job: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/upload", response_model=Dict[str, Any])
+async def upload_and_preprocess(
+    file: UploadFile = File(...),
+    config: str = Form(...),
+    auto_execute: bool = Form(True),
+    controller: PreprocessingController = Depends(get_preprocessing_controller)
+):
+    """Upload a file and start preprocessing"""
     try:
         # Parse config
         config_dict = json.loads(config)
@@ -60,24 +97,37 @@ async def start_preprocessing_from_upload(
         upload_dir = os.path.join(settings.DATA_STORAGE_PATH, "uploads")
         os.makedirs(upload_dir, exist_ok=True)
         
-        file_path = os.path.join(upload_dir, str(file.filename))
+        # Generate unique filename
+        file_ext = os.path.splitext(file.filename)[1]
+        unique_filename = f"{uuid4()}{file_ext}"
+        file_path = os.path.join(upload_dir, unique_filename)
+        
         content = await file.read()
         
         with open(file_path, "wb") as f:
             f.write(content)
         
-        # Start job
-        result = await controller.start_job(
+        # Create job
+        result = await controller.add_job(
             input_path=file_path,
-            config=config_obj
+            config=config_obj,
+            user_id="system",
+            tags=["uploaded"]
         )
+        
+        # Auto-execute if requested
+        if auto_execute and result.get("job_id"):
+            job_id = result["job_id"]
+            execution_result = await controller.execute_job(job_id)
+            result["execution_id"] = execution_result.get("execution_id")
+            result["execution_status"] = "started"
         
         return result
         
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=400, detail=f"Invalid JSON config: {e}")
     except Exception as e:
-        logger.error(f"Failed to start preprocessing from upload: {e}")
+        logger.error(f"Failed to upload and preprocess: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -95,13 +145,20 @@ async def get_preprocessing_status(
 
 @router.get("/jobs", response_model=Dict[str, Any])
 async def list_preprocessing_jobs(
-    limit: int = 50,
-    offset: int = 0,
-    status: Optional[str] = None,
+    status: Optional[str] = Query(None, description="Filter by job status"),
+    user_id: Optional[str] = Query(None, description="Filter by user ID"),
+    limit: int = Query(50, ge=1, le=100, description="Number of jobs to return"),
+    offset: int = Query(0, ge=0, description="Number of jobs to skip"),
     controller: PreprocessingController = Depends(get_preprocessing_controller)
 ):
-    """List all preprocessing jobs"""
-    return await controller.list_jobs(limit=limit, offset=offset, status=status)
+    """List all preprocessing jobs with pagination and filters"""
+    result = await controller.list_jobs(
+        status=status,
+        user_id=user_id,
+        limit=limit,
+        offset=offset
+    )
+    return result
 
 
 @router.delete("/jobs/{job_id}", response_model=Dict[str, Any])
@@ -116,12 +173,26 @@ async def cancel_preprocessing_job(
     raise HTTPException(status_code=400, detail="Job cannot be cancelled or not found")
 
 
-@router.get("/statistics/{job_id}", response_model=Dict[str, Any])
+@router.get("/statistics", response_model=Dict[str, Any])
 async def get_preprocessing_statistics(
+    user_id: Optional[str] = Query(None, description="Filter by user ID"),
+    controller: PreprocessingController = Depends(get_preprocessing_controller)
+):
+    """Get preprocessing statistics"""
+    try:
+        stats = await controller.get_statistics(user_id=user_id)
+        return stats
+    except Exception as e:
+        logger.error(f"Failed to get preprocessing statistics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/metrics/{job_id}", response_model=Dict[str, Any])
+async def get_preprocessing_metrics(
     job_id: str,
     controller: PreprocessingController = Depends(get_preprocessing_controller)
 ):
-    """Get detailed statistics about preprocessing"""
+    """Get detailed preprocessing metrics"""
     status = await controller.get_job_status(job_id)
     if not status:
         raise HTTPException(status_code=404, detail="Job not found")

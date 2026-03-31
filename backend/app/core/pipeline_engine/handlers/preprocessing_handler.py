@@ -11,7 +11,7 @@ import logging
 
 from app.common.job_models import PreprocessingJob, PreprocessingConfig
 from app.core.pipeline_engine.handlers.base_handler import BaseHandler
-from app.core.spark_manager import SparkManager
+from app.core.preprocessing.spark_manager import SparkManager
 from app.core.preprocessing.spark_processor import SparkCleaner, SparkNormalizer
 from app.core.preprocessing.deduplicator import DocumentDeduplicator
 from app.core.preprocessing.knowledge_extractor import KnowledgeExtractor

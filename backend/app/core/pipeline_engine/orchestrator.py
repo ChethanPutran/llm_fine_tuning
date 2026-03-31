@@ -276,16 +276,47 @@ class PipelineOrchestrator:
             })
     # ==================== Job Management ====================
     
-    def register_job(self, job: Any) -> UUID:
+    async def execute_job(self, job_id: UUID) -> Dict[str, Any]:
+        """Execute a job by ID"""
+        job = self._jobs.get(job_id)
+        if not job:
+            logger.error(f"Job {job_id} not found")
+            return {
+                "error": "Job not found"
+            }
+        return {
+            "message": "Job execution started",
+            "job_id": str(job_id),
+            "execution_id": str(job.execution_id) if hasattr(job, 'execution_id') else None
+        }
+        print(f"Executing job {job_id} of type {job.job_type.value}")
+        # # Convert job to pipeline and execute
+        # pipeline = job.to_pipeline()
+        # asyncio.create_task(self.execute_pipeline(pipeline, user_id=job.user_id, priority=job.priority))
+
+
+    def register_job(self, job: Any, metadata: Dict[str, Any]) -> UUID:
         """
         Register a job in the orchestrator
         
         Args:
             job: Job object (DataCollectionJob, TrainingJob, etc.)
+            metadata: Node metadata
         
         Returns:
             Job ID
         """
+
+         # Add data collection node to pipeline
+        self.add_node_to_pipeline(
+            name=metadata["name"],
+            node_type=metadata["node_type"],
+            resources=metadata["resources"],
+            metadata=metadata["metadata"],
+            retry_policy=metadata["retry_policy"],
+            position=metadata["position"],
+            job = job
+        )
         self._jobs[job.job_id] = job
         logger.info(f"Job {job.job_id} registered with type {job.job_type.value}")
         return job.job_id
@@ -386,14 +417,13 @@ class PipelineOrchestrator:
     
     def add_node_to_pipeline(
         self,
-        node_id: str,
         name: str,
         node_type: NodeType,
-        config: Dict,
         resources: Dict,
         retry_policy: Dict,
         metadata: Dict,
-        position: tuple
+        position: tuple,
+        job: Optional[Any] = None
     ) -> 'PipelineOrchestrator':
         """
         Add a node to the global pipeline
@@ -412,14 +442,13 @@ class PipelineOrchestrator:
             Self for method chaining
         """
         self.pipeline_builder.add_node(
-            node_id=node_id,
             name=name,
             node_type=node_type,
-            config=config,
             resources=resources,
             retry_policy=retry_policy or {"max_retries": 3, "strategy": "exponential"},
             metadata=metadata,
-            position=position
+            position=position,
+            job = job
         )
         return self
     
@@ -608,7 +637,7 @@ class PipelineOrchestrator:
         return False
     
     # ==================== Resource Management ====================
-    async def get_execution_logs(self, execution_id: UUID) -> Optional[List[str]]:  
+    async def get_execution_logs(self, execution_id: UUID, node_id:str="*") -> Optional[List[str]]:  
         """Get execution logs"""
         return await self.state_manager.get_logs(execution_id)
 

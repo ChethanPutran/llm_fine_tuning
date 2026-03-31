@@ -486,7 +486,7 @@ class PipelineStateManager:
             logger.error(f"Failed to serialize pipeline: {e}")
             raise
     
-    async  def get_logs(self, execution_id: UUID) -> Optional[list]:
+    async  def get_logs(self, execution_id: UUID, node_id: str = "*") -> Optional[list]:
         """Get execution logs"""
         try:
             logs_key = f"logs:{execution_id}"

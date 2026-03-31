@@ -1,26 +1,24 @@
-// src/components/PortalProvider.jsx
 import React from 'react';
-import { createPortal } from 'react-dom';
+import ReactDOM from 'react-dom/client';
+import ErrorBoundary from './Error.jsx';
+import { StyledEngineProvider } from '@mui/material/styles';
+import App from './App.jsx';
+import './index.css';
 
-export const PortalContext = React.createContext(null);
+// Create portal root for modals
+const rootElement = document.getElementById('root');
+const modalRoot = document.createElement('div');
+modalRoot.id = 'modal-root';
+document.body.appendChild(modalRoot);
 
-export const PortalProvider = ({ children }) => {
-  const [portalContainer, setPortalContainer] = React.useState(null);
-  
-  React.useEffect(() => {
-    // Wait for DOM to be ready
-    const container = document.getElementById('modal-root');
-    setPortalContainer(container);
-  }, []);
-  
-  if (!portalContainer) {
-    return null; // Don't render until portal container exists
-  }
-  
-  return (
-    <PortalContext.Provider value={portalContainer}>
-      {children}
-      {createPortal(<div id="mui-portal-placeholder" />, portalContainer)}
-    </PortalContext.Provider>
+if (rootElement) {
+  ReactDOM.createRoot(rootElement).render(
+    <React.StrictMode>
+      <StyledEngineProvider injectFirst>
+        <ErrorBoundary>
+          <App />
+        </ErrorBoundary>
+      </StyledEngineProvider>
+    </React.StrictMode>
   );
-};
+}

@@ -335,7 +335,7 @@ async def initialize_spark(app: FastAPI):
     try:
         # Check if Spark is configured
         if hasattr(settings, 'SPARK_MASTER') and settings.SPARK_MASTER:
-            from app.core.spark_manager import SparkManager
+            from app.core.preprocessing.spark_manager import SparkManager
             
             spark = SparkManager.get_session(
                 app_name=settings.SPARK_APP_NAME,

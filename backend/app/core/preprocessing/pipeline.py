@@ -27,25 +27,25 @@ class PreprocessingPipeline(BasePipeline):
         }
 
     @classmethod
-    async def create(cls, spark: 'SparkSession' = None, config: Dict[str, Any] = None):
-        from app.core.spark_manager import SparkManager
+    async def create(cls, spark: 'SparkSession', config: Dict[str, Any])-> 'PreprocessingPipeline':
+        from app.core.preprocessing.spark_manager import SparkManager
         spark = spark or await SparkManager.get_session()
         return cls(spark, config)
         
     async def build_default_pipeline(self) -> 'PreprocessingPipeline':
         """Build default preprocessing pipeline"""
         # Add cleaning processors
-        await self.add_processor(SparkCleaner(self.spark))
-        await self.add_processor(SparkNormalizer(self.spark))
+        self.add_processor(SparkCleaner(self.spark))
+        self.add_processor(SparkNormalizer(self.spark))
         
         # Add deduplication if configured
         if self.config.get('deduplicate', True):
             threshold = self.config.get('dedup_threshold', 0.9)
-            await self.add_processor(DocumentDeduplicator(self.spark, threshold))
+            self.add_processor(DocumentDeduplicator(self.spark, threshold))
         
         # Add knowledge extraction if configured
         if self.config.get('extract_knowledge', True):
-            await self.add_processor(KnowledgeExtractor(self.spark))
+            self.add_processor(KnowledgeExtractor(self.spark))
             
         return self
     

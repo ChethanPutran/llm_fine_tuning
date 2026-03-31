@@ -1,502 +1,996 @@
-import React, { useState, useEffect } from "react";
-import { Container, Grid, Typography, Box } from "@mui/material";
-import PipelineStage from "../components/PipelineStage";
-import StatusMonitor from "../components/StatusMonitor";
-import { apiService } from "../services/api.jsx";
+import React, { useState, useCallback, useEffect, useMemo } from "react";
+import {
+  Container,
+  Grid,
+  Typography,
+  Box,
+  Button,
+  MenuItem,
+  Select,
+  FormControl,
+  InputLabel,
+  Card,
+  CardContent,
+  Divider,
+  Alert,
+  Snackbar,
+  Chip,
+  IconButton,
+  Paper,
+  LinearProgress,
+  Tabs,
+  Tab,
+  Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Fab,
+  Zoom,
+  useTheme,
+  alpha,
+  Drawer,
+} from "@mui/material";
+import {
+  Add as AddIcon,
+  Delete as DeleteIcon,
+  Save as SaveIcon,
+  PlayArrow as PlayArrowIcon,
+  Clear as ClearIcon,
+  Settings as SettingsIcon,
+  Timeline as TimelineIcon,
+  Assessment as AssessmentIcon,
+  History as HistoryIcon,
+  Close as CloseIcon,
+  Download as DownloadIcon,
+  CheckCircle as CheckCircleIcon,
+  Error as ErrorIcon,
+  Refresh as RefreshIcon,
+} from "@mui/icons-material";
+import StageConfig from "../components/StageConfig";
+import PipelineVisualizer from "../components/PipelineVisualizer";
+import { ExecutionMonitor } from "../components/ExecutionMonitor";
+import { useWebSocketContext } from "../context/WebSocketContext";
+import { STAGE_DEFINITIONS } from "../constants/pipelineStages";
+import Settings from "./Settings"; // Import Settings component
+
+// Tab Panel Component
+const TabPanel = ({ children, value, index, ...other }) => (
+  <div
+    role="tabpanel"
+    hidden={value !== index}
+    id={`dashboard-tabpanel-${index}`}
+    aria-labelledby={`dashboard-tab-${index}`}
+    {...other}
+  >
+    {value === index && <Box sx={{ pt: 3 }}>{children}</Box>}
+  </div>
+);
+
+// Pipeline History Item Component
+const HistoryItem = ({ item, onLoad, onDelete }) => (
+  <Paper
+    sx={{
+      p: 2,
+      mb: 1,
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      cursor: 'pointer',
+      transition: 'all 0.2s',
+      '&:hover': {
+        bgcolor: 'action.hover',
+        transform: 'translateX(4px)'
+      }
+    }}
+    onClick={() => onLoad(item)}
+  >
+    <Box>
+      <Typography variant="subtitle2">
+        {item.name || `Pipeline ${new Date(item.createdAt).toLocaleString()}`}
+      </Typography>
+      <Typography variant="caption" color="text.secondary">
+        {item.stages?.length || 0} stages • Created: {new Date(item.createdAt).toLocaleDateString()}
+      </Typography>
+    </Box>
+    <IconButton
+      size="small"
+      onClick={(e) => {
+        e.stopPropagation();
+        onDelete(item.id);
+      }}
+    >
+      <DeleteIcon fontSize="small" />
+    </IconButton>
+  </Paper>
+);
 
 const Dashboard = () => {
-  // Store configuration for each stage separately
-  const [stageConfigs, setStageConfigs] = useState({});
-  const [stageStatus, setStageStatus] = useState({});
+  const theme = useTheme();
+  const { isConnected: wsConnected } = useWebSocketContext();
+  
+  // State Management
+  const [selectedType, setSelectedType] = useState("");
+  const [currentConfig, setCurrentConfig] = useState({});
+  const [pipeline, setPipeline] = useState([]);
+  const [selectedStage, setSelectedStage] = useState(null);
+  const [activeExecutionId, setActiveExecutionId] = useState(null);
+  const [isRunning, setIsRunning] = useState(false);
+  const [currentTab, setCurrentTab] = useState(0);
+  const [pipelineHistory, setPipelineHistory] = useState([]);
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [pipelineName, setPipelineName] = useState("");
+  const [validationErrors, setValidationErrors] = useState({});
+  const [executionLogs, setExecutionLogs] = useState([]);
+  const [settingsOpen, setSettingsOpen] = useState(false); // Settings drawer state
+  
+  // Snackbar State
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: '',
+    severity: 'info'
+  });
 
-  const stages = [
-    {
-      id: "data_collection",
-      name: "Data Collection",
-      startApi: apiService.startDataCollection,
-      statusApi: apiService.getCollectionStatus,
-      options: [
-        {
-          key: "source",
-          label: "Data Source",
-          type: "select",
-          values: ["web", "books", "upload"],
-          default: "web",
-          required: true,
-        },
-        {
-          key: "topic",
-          label: "Topic",
-          type: "text",
-          placeholder: "e.g., machine learning",
-          required: true,
-        },
-        {
-          key: "limit",
-          label: "Documents Limit",
-          type: "select",
-          values: ["50", "100", "500", "1000"],
-          default: "100",
-        },
-        {
-          key: "max_depth",
-          label: "Max Crawl Depth",
-          type: "number",
-          min: 1,
-          max: 5,
-          default: 2,
-        },
-        {
-          key: "timeout",
-          label: "Timeout (seconds)",
-          type: "number",
-          min: 5,
-          max: 60,
-          default: 10,
-        },
-      ],
-    },
-    {
-      id: "preprocessing",
-      name: "Preprocessing",
-      startApi: apiService.startPreprocessing,
-      statusApi: apiService.getPreprocessingStatus,
-      options: [
-        {
-          key: "input_path",
-          label: "Input Path",
-          type: "text",
-          placeholder: "e.g., /path/to/input",
-          required: true,
-        },
-        {
-          key: "clean_method",
-          label: "Cleaning Method",
-          type: "select",
-          values: ["standard", "advanced"],
-          default: "standard",
-        },
-        {
-          key: "dedup_threshold",
-          label: "Deduplication Threshold",
-          type: "slider",
-          min: 0,
-          max: 1,
-          step: 0.05,
-          default: 0.9,
-        },
-        {
-          key: "extract_entities",
-          label: "Extract Named Entities",
-          type: "checkbox",
-          default: true,
-        },
-        {
-          key: "normalize_text",
-          label: "Normalize Text",
-          type: "checkbox",
-          default: true,
-        },
-        {
-          key: "extract_keywords",
-          label: "Extract Keywords",
-          type: "checkbox",
-          default: true,
-        },
-        {
-          key: "min_doc_length",
-          label: "Minimum Document Length",
-          type: "number",
-          min: 10,
-          max: 500,
-          default: 50,
-        },
-        {
-          key: "remove_stopwords",
-          label: "Remove Stopwords",
-          type: "checkbox",
-          default: true,
-        },
-        {
-          key: "output_format",
-          label: "Output Format",
-          type: "select",
-          values: ["parquet", "csv", "json"],
-          default: "parquet",
-        },
-      ],
-    },
-    {
-      id: "tokenization",
-      name: "Tokenization",
-      startApi: apiService.trainTokenizer,
-      statusApi: apiService.getTokenizerStatus,
-      options: [
-        {
-          key: "tokenizer_type",
-          label: "Tokenizer Type",
-          type: "select",
-          values: ["bpe", "wordpiece", "sentencepiece"],
-          default: "bpe",
-        },
-        {
-          key: "vocab_size",
-          label: "Vocabulary Size",
-          type: "select",
-          values: ["30000", "50000", "100000"],
-          default: "50000",
-        },
-        {
-          key: "corpus_path",
-          label: "Corpus Path",
-          type: "text",
-          placeholder: "e.g., /path/to/corpus",
-          required: true,
-        },
-        {
-          key: "output_path",
-          label: "Output Path",
-          type: "text",
-          placeholder: "e.g., /path/to/save/tokenizer",
-          required: true,
-        },
-        {
-          key: "field",
-          label: "Field to Tokenize",
-          type: "text",
-          default: "content_clean",
-          required: false,
-        },
-      ],
-    },
-    {
-      id: "finetuning",
-      name: "Fine-tuning",
-      startApi: apiService.startFinetuning,
-      statusApi: apiService.getFinetuningStatus,
-      options: [
-        {
-          key: "model_type",
-          label: "Model Type",
-          type: "select",
-          values: ["bert", "gpt", "bart"],
-          default: "bert",
-          required: true,
-        },
-        {
-          key: "model_name",
-          label: "Model Name",
-          type: "text",
-          placeholder: "bert-base-uncased",
-          required: true,
-        },
-        {
-          key: "strategy",
-          label: "Fine-tuning Strategy",
-          type: "select",
-          values: ["full", "lora", "adapter"],
-          default: "lora",
-        },
-        {
-          key: "task",
-          label: "Task",
-          type: "select",
-          values: ["classification", "summarization", "qa"],
-          default: "classification",
-        },
-        {
-          key: "learning_rate",
-          label: "Learning Rate",
-          type: "number",
-          step: 0.00001,
-          default: 0.00002,
-        },
-        {
-          key: "num_epochs",
-          label: "Number of Epochs",
-          type: "number",
-          min: 1,
-          max: 20,
-          default: 3,
-        },
-        {
-          key: "dataset",
-          label: "Dataset Name",
-          type: "select",
-          values: [
-            "general_instruction_tuning",
-            "mathematical_reasoning",
-            "code_generation_and_understanding",
-            "instruction_following",
-            "multilingual_understanding",
-            "agent_and_function_calling",
-            "real_world_conversation",
-            "preference_alignment",
-          ],
-          default: "general_instruction_tuning",
-          required: true,
-        },
-        {
-          key: "batch_size",
-          label: "Batch Size",
-          type: "select",
-          values: ["8", "16", "32", "64"],
-          default: "16",
-        },
-      ],
-    },
-    {
-      id: "optimization",
-      name: "Optimization",
-      startApi: apiService.optimizeModel,
-      statusApi: apiService.getOptimizationStatus,
-      options: [
-        {
-          key: "optimization_type",
-          label: "Optimization Type",
-          type: "select",
-          values: ["pruning", "distillation", "quantization"],
-          default: "pruning",
-        },
-        {
-          key: "target_sparsity",
-          label: "Target Sparsity",
-          type: "slider",
-          min: 0,
-          max: 0.9,
-          step: 0.05,
-          default: 0.5,
-        },
-      ],
-    },
-    {
-      id: "deployment",
-      name: "Deployment",
-      startApi: apiService.deployModel,
-      statusApi: apiService.getDeploymentStatus,
-      options: [
-        {
-          key: "deployment_target",
-          label: "Deployment Target",
-          type: "select",
-          values: ["local", "cloud", "edge"],
-          default: "local",
-        },
-        {
-          key: "serving_framework",
-          label: "Serving Framework",
-          type: "select",
-          values: ["torchserve", "tensorflow-serving", "onnx"],
-          default: "torchserve",
-        },
-      ],
-    },
-  ];
-
-  // Load saved configs from localStorage on mount
+  // Load pipeline history from localStorage
   useEffect(() => {
-    const savedConfigs = localStorage.getItem("stageConfigs");
-    if (savedConfigs) {
-      setStageConfigs(JSON.parse(savedConfigs));
+    const savedHistory = localStorage.getItem('pipelineHistory');
+    if (savedHistory) {
+      setPipelineHistory(JSON.parse(savedHistory));
     }
   }, []);
 
-  // Save configs to localStorage when changed
-  useEffect(() => {
-    if (Object.keys(stageConfigs).length > 0) {
-      localStorage.setItem("stageConfigs", JSON.stringify(stageConfigs));
-    }
-  }, [stageConfigs]);
-
-  // Helper function to call the appropriate API based on stage
-  const callStartApi = async (stage, config) => {
-    switch (stage.id) {
-      case "data_collection":
-        return await stage.startApi(config.source, config.topic, config.limit, {
-          max_depth: config.max_depth,
-          timeout: config.timeout,
-        });
-
-      case "preprocessing":
-        return await stage.startApi(
-          config.input_path || "default_input", // input_path as separate param
-          {
-            clean_method: config.clean_method,
-            dedup_threshold: parseFloat(config.dedup_threshold),
-            extract_entities: config.extract_entities,
-            extract_keywords: config.extract_keywords || true,
-            normalize_text: config.normalize_text,
-            remove_stopwords: config.remove_stopwords || true,
-            min_doc_length: parseInt(config.min_doc_length),
-            max_doc_length: 10000,
-            language: "en",
-            output_format: config.output_format,
-          },
-        );
-
-      case "tokenization":
-        return await stage.startApi(
-          config.tokenizer_type,
-          config.corpus_path || "default_corpus",
-          parseInt(config.vocab_size),
-          config.output_path || "default_output",
-          config.field || "content_clean",
-        );
-
-      case "finetuning":
-        return await stage.startApi(
-          config.model_type,
-          config.model_name,
-          config.strategy,
-          config.task,
-          config.dataset_path || "default_dataset",
-          {
-            learning_rate: parseFloat(config.learning_rate),
-            num_epochs: parseInt(config.num_epochs),
-            batch_size: parseInt(config.batch_size),
-          },
-        );
-
-      case "optimization":
-        return await stage.startApi(
-          config.model_path || "default_model",
-          config.optimization_type,
-          { target_sparsity: parseFloat(config.target_sparsity) },
-        );
-
-      case "deployment":
-        return await stage.startApi(
-          config.model_path || "default_model",
-          config.deployment_target,
-          config.serving_framework,
-          {},
-        );
-
-      default:
-        throw new Error(`Unknown stage: ${stage.id}`);
-    }
-  };
-
-  const handleStageStart = async (stage, config) => {
-    // Save config before starting
-    setStageConfigs((prev) => ({ ...prev, [stage.id]: config }));
-
-    // Update status
-    setStageStatus((prev) => ({
-      ...prev,
-      [stage.id]: { status: "running", progress: 0 },
-    }));
-
-    try {
-      const response = await callStartApi(stage, config);
-      const jobId = response.job_id || response.deployment_id;
-
-      // Only poll if there's a status API and job ID
-      if (stage.statusApi && jobId) {
-        // Poll for updates
-        const interval = setInterval(async () => {
-          try {
-            const status = await stage.statusApi(jobId);
-            setStageStatus((prev) => ({
-              ...prev,
-              [stage.id]: {
-                status: status.status,
-                progress: status.progress || 0,
-                error: status.error,
-                result: status.result,
-              },
-            }));
-
-            if (status.status === "completed" || status.status === "failed") {
-              clearInterval(interval);
-            }
-          } catch (error) {
-            console.error("Error polling status:", error);
-            clearInterval(interval);
-          }
-        }, 2000);
-
-        // Store interval ID for cleanup if needed
-        if (window.pollingIntervals) {
-          window.pollingIntervals[stage.id] = interval;
-        } else {
-          window.pollingIntervals = { [stage.id]: interval };
-        }
-      } else {
-        // No polling available, just mark as completed
-        setStageStatus((prev) => ({
-          ...prev,
-          [stage.id]: { status: "completed", progress: 100, result: response },
-        }));
-      }
-    } catch (error) {
-      console.error(`Error starting ${stage.id}:`, error);
-      setStageStatus((prev) => ({
-        ...prev,
-        [stage.id]: {
-          status: "failed",
-          error: error.message || "Failed to start stage",
-        },
-      }));
-    }
-  };
-
-  const handleStageStop = async (stageId) => {
-    // Clear polling interval if exists
-    if (window.pollingIntervals && window.pollingIntervals[stageId]) {
-      clearInterval(window.pollingIntervals[stageId]);
-      delete window.pollingIntervals[stageId];
-    }
-    setStageStatus((prev) => ({ ...prev, [stageId]: { status: "stopped" } }));
-  };
-
-  // Cleanup polling intervals on unmount
-  useEffect(() => {
-    return () => {
-      if (window.pollingIntervals) {
-        Object.values(window.pollingIntervals).forEach((interval) =>
-          clearInterval(interval),
-        );
-      }
+  // Save pipeline history to localStorage
+  const saveToHistory = useCallback((pipelineData, name = null) => {
+    const historyItem = {
+      id: Date.now().toString(),
+      name: name || `Pipeline ${new Date().toLocaleString()}`,
+      stages: pipelineData,
+      createdAt: new Date().toISOString(),
+      stageCount: pipelineData.length
     };
+    
+    const updatedHistory = [historyItem, ...pipelineHistory.slice(0, 9)];
+    setPipelineHistory(updatedHistory);
+    localStorage.setItem('pipelineHistory', JSON.stringify(updatedHistory));
+    return historyItem;
+  }, [pipelineHistory]);
+
+  // Load pipeline from history
+  const loadFromHistory = useCallback((historyItem) => {
+    setPipeline(historyItem.stages);
+    setSnackbar({
+      open: true,
+      message: `Loaded pipeline: ${historyItem.name}`,
+      severity: 'success'
+    });
+    setCurrentTab(0);
   }, []);
+
+  // Delete from history
+  const deleteFromHistory = useCallback((id) => {
+    const updatedHistory = pipelineHistory.filter(item => item.id !== id);
+    setPipelineHistory(updatedHistory);
+    localStorage.setItem('pipelineHistory', JSON.stringify(updatedHistory));
+    setSnackbar({
+      open: true,
+      message: 'Pipeline deleted from history',
+      severity: 'info'
+    });
+  }, [pipelineHistory]);
+
+
+  // Validate stage configuration
+  const validateStageConfig = useCallback((stageDef, config) => {
+    const errors = {};
+    const allFields = [...(stageDef.fields || []), ...(stageDef.advancedFields || [])];
+    
+    allFields.forEach(field => {
+      if (field.required && (!config[field.key] || config[field.key] === '')) {
+        errors[field.key] = `${field.label} is required`;
+      }
+      if (field.type === 'number' && config[field.key]) {
+        const value = parseFloat(config[field.key]);
+        if (field.min !== undefined && value < field.min) {
+          errors[field.key] = `${field.label} must be at least ${field.min}`;
+        }
+        if (field.max !== undefined && value > field.max) {
+          errors[field.key] = `${field.label} must be at most ${field.max}`;
+        }
+      }
+    });
+    
+    return errors;
+  }, []);
+
+  // Add node to pipeline
+  const handleAddNode = useCallback(() => {
+    if (!selectedType) {
+      setSnackbar({
+        open: true,
+        message: 'Please select a stage type',
+        severity: 'warning'
+      });
+      return;
+    }
+
+    const stageDef = STAGE_DEFINITIONS.find(s => s.id === selectedType);
+    const errors = validateStageConfig(stageDef, currentConfig);
+    
+    if (Object.keys(errors).length > 0) {
+      setValidationErrors(errors);
+      setSnackbar({
+        open: true,
+        message: `Please fix validation errors: ${Object.values(errors).join(', ')}`,
+        severity: 'error'
+      });
+      return;
+    }
+
+    const newNode = {
+      id: `${selectedType}-${Date.now()}`,
+      type: selectedType,
+      name: stageDef.name,
+      description: `${stageDef.name} stage`,
+      config: currentConfig,
+      color: stageDef.color,
+      status: 'pending',
+      progress: 0,
+      createdAt: new Date().toISOString(),
+    };
+
+    setPipeline(prev => [...prev, newNode]);
+    setSelectedType("");
+    setCurrentConfig({});
+    setValidationErrors({});
+    
+    setSnackbar({
+      open: true,
+      message: `${stageDef.name} added to pipeline`,
+      severity: 'success'
+    });
+  }, [selectedType, currentConfig, validateStageConfig]);
+
+  // Remove node from pipeline
+  const handleRemoveNode = useCallback((nodeId) => {
+    setPipeline(prev => prev.filter(node => node.id !== nodeId));
+    if (selectedStage?.id === nodeId) {
+      setSelectedStage(null);
+    }
+    setSnackbar({
+      open: true,
+      message: 'Stage removed from pipeline',
+      severity: 'info'
+    });
+  }, [selectedStage]);
+
+  // Clear all nodes
+  const handleClearAll = useCallback(() => {
+    if (pipeline.length === 0) return;
+    
+    if (window.confirm('Are you sure you want to clear the entire pipeline? This action cannot be undone.')) {
+      setPipeline([]);
+      setSelectedStage(null);
+      setSnackbar({
+        open: true,
+        message: 'Pipeline cleared',
+        severity: 'info'
+      });
+    }
+  }, [pipeline]);
+
+  // Save current pipeline
+  const handleSavePipeline = useCallback(() => {
+    setSaveDialogOpen(true);
+    setPipelineName(`Pipeline ${new Date().toLocaleString()}`);
+  }, []);
+
+  const confirmSavePipeline = useCallback(() => {
+    const name = pipelineName.trim() || `Pipeline ${new Date().toLocaleString()}`;
+    saveToHistory(pipeline, name);
+    setSaveDialogOpen(false);
+    setPipelineName("");
+    setSnackbar({
+      open: true,
+      message: 'Pipeline saved successfully!',
+      severity: 'success'
+    });
+  }, [pipeline, pipelineName, saveToHistory]);
+
+  // Export pipeline as JSON
+  const handleExportPipeline = useCallback(() => {
+    const dataStr = JSON.stringify({
+      pipeline,
+      metadata: {
+        version: '1.0',
+        exportedAt: new Date().toISOString(),
+        stageCount: pipeline.length
+      }
+    }, null, 2);
+    
+    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+    const exportFileDefaultName = `pipeline_${Date.now()}.json`;
+    
+    const linkElement = document.createElement('a');
+    linkElement.setAttribute('href', dataUri);
+    linkElement.setAttribute('download', exportFileDefaultName);
+    linkElement.click();
+    
+    setSnackbar({
+      open: true,
+      message: 'Pipeline exported successfully',
+      severity: 'success'
+    });
+  }, [pipeline]);
+
+  // Import pipeline from JSON
+  const handleImportPipeline = useCallback(() => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    
+    input.onchange = (e) => {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      
+      reader.onload = (event) => {
+        try {
+          const imported = JSON.parse(event.target.result);
+          const importedPipeline = imported.pipeline || imported;
+          
+          if (Array.isArray(importedPipeline)) {
+            setPipeline(importedPipeline);
+            setSnackbar({
+              open: true,
+              message: `Imported ${importedPipeline.length} stages`,
+              severity: 'success'
+            });
+          } else {
+            throw new Error('Invalid pipeline format');
+          }
+        } catch (error) {
+          setSnackbar({
+            open: true,
+            message: 'Failed to import pipeline: Invalid format',
+            severity: 'error'
+          });
+        }
+      };
+      
+      reader.readAsText(file);
+    };
+    
+    input.click();
+  }, []);
+
+  // Run pipeline
+  const handleRunPipeline = useCallback(async () => {
+    if (pipeline.length === 0) {
+      setSnackbar({
+        open: true,
+        message: 'Please add stages to the pipeline first',
+        severity: 'warning'
+      });
+      return;
+    }
+    
+    setIsRunning(true);
+    setExecutionLogs([]);
+    
+    try {
+      const executionId = `exec_${Date.now()}`;
+      setActiveExecutionId(executionId);
+      
+      setExecutionLogs(prev => [...prev, {
+        timestamp: new Date(),
+        level: 'info',
+        message: 'Pipeline execution started'
+      }]);
+      
+      for (let i = 0; i < pipeline.length; i++) {
+        const stage = pipeline[i];
+        
+        setPipeline(prev => prev.map(s => 
+          s.id === stage.id ? { ...s, status: 'running', progress: 0 } : s
+        ));
+        
+        setExecutionLogs(prev => [...prev, {
+          timestamp: new Date(),
+          level: 'info',
+          message: `Starting stage: ${stage.name}`
+        }]);
+        
+        for (let progress = 0; progress <= 100; progress += 20) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+          setPipeline(prev => prev.map(s =>
+            s.id === stage.id ? { ...s, progress } : s
+          ));
+        }
+        
+        setPipeline(prev => prev.map(s =>
+          s.id === stage.id ? { ...s, status: 'completed', progress: 100 } : s
+        ));
+        
+        setExecutionLogs(prev => [...prev, {
+          timestamp: new Date(),
+          level: 'success',
+          message: `Completed stage: ${stage.name}`
+        }]);
+      }
+      
+      setExecutionLogs(prev => [...prev, {
+        timestamp: new Date(),
+        level: 'success',
+        message: 'Pipeline execution completed successfully!'
+      }]);
+      
+      setSnackbar({
+        open: true,
+        message: 'Pipeline execution completed successfully!',
+        severity: 'success'
+      });
+      
+    } catch (error) {
+      console.error('Pipeline execution failed:', error);
+      setExecutionLogs(prev => [...prev, {
+        timestamp: new Date(),
+        level: 'error',
+        message: `Execution failed: ${error.message}`
+      }]);
+      setSnackbar({
+        open: true,
+        message: 'Pipeline execution failed',
+        severity: 'error'
+      });
+    } finally {
+      setIsRunning(false);
+      setActiveExecutionId(null);
+    }
+  }, [pipeline]);
+
+  // Handle node click in visualizer
+  const handleNodeClick = useCallback((node) => {
+    const originalNode = pipeline.find(n => n.id === node.id);
+    setSelectedStage(originalNode);
+  }, [pipeline]);
+
+  // Calculate pipeline statistics
+  const pipelineStats = useMemo(() => {
+    const completed = pipeline.filter(s => s.status === 'completed').length;
+    const running = pipeline.filter(s => s.status === 'running').length;
+    const failed = pipeline.filter(s => s.status === 'failed').length;
+    const pending = pipeline.filter(s => s.status === 'pending' || !s.status).length;
+    
+    return { completed, running, failed, pending, total: pipeline.length };
+  }, [pipeline]);
 
   return (
-    <Container maxWidth="lg">
-      <Box sx={{ my: 4 }}>
-        <Typography variant="h3" component="h1" gutterBottom>
-          LLM Fine-tuning Platform
-        </Typography>
-
-        <Grid container spacing={3}>
-          <Grid item xs={12} md={8}>
-            {stages.map((stage) => (
-              <PipelineStage
-                key={stage.id}
-                stage={stage}
-                config={stageConfigs[stage.id] || {}}
-                status={stageStatus[stage.id]?.status || "pending"}
-                progress={stageStatus[stage.id]?.progress || 0}
-                error={stageStatus[stage.id]?.error}
-                result={stageStatus[stage.id]?.result}
-                onStart={(config) => handleStageStart(stage, config)}
-                onStop={() => handleStageStop(stage.id)}
+    <Container maxWidth="xl" sx={{ py: 4, position: 'relative' }}>
+      {/* Header Section with Settings Button */}
+      <Box sx={{ mb: 4 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+          <Box>
+            <Typography variant="h4" fontWeight="700" gutterBottom>
+              ML Pipeline Builder
+            </Typography>
+            <Typography variant="body1" color="text.secondary">
+              Design, visualize, and execute machine learning pipelines with real-time monitoring
+            </Typography>
+          </Box>
+          
+          {/* Settings Button - RIGHT HERE */}
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Tooltip title="Settings">
+              <IconButton 
+                onClick={() => {
+                  setSettingsOpen(true)
+                }} 
+                color="primary"
+                sx={{ 
+                  bgcolor: alpha(theme.palette.primary.main, 0.1),
+                  '&:hover': {
+                    bgcolor: alpha(theme.palette.primary.main, 0.2),
+                  }
+                }}
+              >
+                <SettingsIcon />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Connection Status">
+              <Chip
+                icon={wsConnected ? <CheckCircleIcon /> : <ErrorIcon />}
+                label={wsConnected ? "Connected" : "Disconnected"}
+                color={wsConnected ? "success" : "error"}
+                variant="outlined"
+                size="small"
               />
-            ))}
-          </Grid>
-
+            </Tooltip>
+          </Box>
+        </Box>
+        
+        {/* Pipeline Statistics */}
+        {pipeline.length > 0 && (
+          <Paper sx={{ p: 2, bgcolor: alpha(theme.palette.primary.main, 0.05), mb: 2 }}>
+            <Grid container spacing={2} alignItems="center">
+              <Grid item xs={12} sm={6} md={3}>
+                <Typography variant="caption" color="text.secondary">Total Stages</Typography>
+                <Typography variant="h6">{pipelineStats.total}</Typography>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Typography variant="caption" color="text.secondary">Completed</Typography>
+                <Typography variant="h6" color="success.main">{pipelineStats.completed}</Typography>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Typography variant="caption" color="text.secondary">In Progress</Typography>
+                <Typography variant="h6" color="info.main">{pipelineStats.running}</Typography>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Typography variant="caption" color="text.secondary">Pending</Typography>
+                <Typography variant="h6" color="warning.main">{pipelineStats.pending}</Typography>
+              </Grid>
+            </Grid>
+          </Paper>
+        )}
+        
+        {/* Tabs */}
+        <Tabs
+          value={currentTab}
+          onChange={(_, v) => setCurrentTab(v)}
+          sx={{ borderBottom: 1, borderColor: 'divider' }}
+        >
+          <Tab label="Pipeline Builder" icon={<TimelineIcon />} iconPosition="start" />
+          <Tab label="History" icon={<HistoryIcon />} iconPosition="start" />
+          <Tab label="Execution Logs" icon={<AssessmentIcon />} iconPosition="start" />
+        </Tabs>
+      </Box>
+      
+      {/* Pipeline Builder Tab */}
+      <TabPanel value={currentTab} index={0}>
+        <Grid container spacing={4}>
+          {/* Left Side: Configuration Panel */}
           <Grid item xs={12} md={4}>
-            <StatusMonitor
-              stages={stages.map((s) => ({
-                ...s,
-                status: stageStatus[s.id]?.status || "pending",
-                progress: stageStatus[s.id]?.progress || 0,
-              }))}
-              stageStatus={stageStatus}
+            <Card sx={{ mb: 3 }}>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>Add New Stage</Typography>
+                
+                <FormControl fullWidth sx={{ mb: 3 }}>
+                  <InputLabel>Select Stage Type</InputLabel>
+                  <Select 
+                    value={selectedType} 
+                    onChange={(e) => {
+                      setSelectedType(e.target.value);
+                      setValidationErrors({});
+                    }}
+                    label="Select Stage Type"
+                  >
+                    {STAGE_DEFINITIONS.map(s => (
+                      <MenuItem key={s.id} value={s.id}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Box sx={{ 
+                            width: 12, 
+                            height: 12, 
+                            borderRadius: '50%', 
+                            bgcolor: s.color 
+                          }} />
+                          {s.name}
+                        </Box>
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+  
+                {selectedType && (
+                  <Box>
+                    <StageConfig 
+                      stage={STAGE_DEFINITIONS.find(s => s.id === selectedType)} 
+                      onConfigChange={(args)=>{
+                        console.log('Received config change from StageConfig:', args);
+                        setCurrentConfig(args);
+                      }
+                      }
+                      config={currentConfig}
+                    />
+                    <Button 
+                      fullWidth 
+                      variant="contained" 
+                      startIcon={<AddIcon />}
+                      onClick={handleAddNode}
+                      disabled={isRunning}
+                      sx={{ mt: 2, py: 1.5, borderRadius: 2 }}
+                    >
+                      Add to Pipeline
+                    </Button>
+                  </Box>
+                )}
+              </CardContent>
+            </Card>
+  
+            {/* Pipeline Controls */}
+            <Card>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>Pipeline Controls</Typography>
+                <Grid container spacing={1}>
+                  <Grid item xs={6}>
+                    <Button 
+                      fullWidth 
+                      variant="outlined" 
+                      startIcon={<SaveIcon />}
+                      onClick={handleSavePipeline}
+                      disabled={pipeline.length === 0}
+                      size="small"
+                    >
+                      Save
+                    </Button>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Button 
+                      fullWidth 
+                      variant="outlined" 
+                      startIcon={<DownloadIcon />}
+                      onClick={handleExportPipeline}
+                      disabled={pipeline.length === 0}
+                      size="small"
+                    >
+                      Export
+                    </Button>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Button 
+                      fullWidth 
+                      variant="outlined" 
+                      startIcon={<RefreshIcon />}
+                      onClick={handleImportPipeline}
+                      size="small"
+                    >
+                      Import
+                    </Button>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Button 
+                      fullWidth 
+                      variant="outlined" 
+                      color="error"
+                      startIcon={<ClearIcon />}
+                      onClick={handleClearAll}
+                      disabled={pipeline.length === 0 || isRunning}
+                      size="small"
+                    >
+                      Clear All
+                    </Button>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Button 
+                      fullWidth 
+                      variant="contained" 
+                      color="success"
+                      startIcon={<PlayArrowIcon />}
+                      onClick={handleRunPipeline}
+                      disabled={pipeline.length === 0 || isRunning}
+                      size="large"
+                      sx={{ mt: 1 }}
+                    >
+                      {isRunning ? 'Executing Pipeline...' : 'Run Pipeline'}
+                    </Button>
+                  </Grid>
+                </Grid>
+              </CardContent>
+            </Card>
+          </Grid>
+  
+          {/* Right Side: Graph Visualizer */}
+          <Grid item xs={12} md={8}>
+            <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="h6" color="text.secondary">
+                Pipeline Visualization
+                {pipeline.length > 0 && (
+                  <Chip 
+                    label={`${pipeline.length} stage${pipeline.length !== 1 ? 's' : ''}`} 
+                    size="small" 
+                    sx={{ ml: 1 }}
+                  />
+                )}
+              </Typography>
+            </Box>
+            
+            <PipelineVisualizer 
+              pipelineNodes={pipeline} 
+              onNodeClick={handleNodeClick}
             />
+            
+            {/* Selected Stage Details */}
+            {selectedStage && (
+              <Card sx={{ mt: 2 }}>
+                <CardContent>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <Box>
+                      <Typography variant="subtitle1" fontWeight="bold">
+                        {selectedStage.name}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" display="block">
+                        Type: {selectedStage.type}
+                      </Typography>
+                    </Box>
+                    <IconButton size="small" onClick={() => setSelectedStage(null)}>
+                      <CloseIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
+                  
+                  {selectedStage.config && Object.keys(selectedStage.config).length > 0 && (
+                    <Box sx={{ mt: 2 }}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        Configuration
+                      </Typography>
+                      <Paper variant="outlined" sx={{ p: 1, bgcolor: 'grey.50' }}>
+                        <Box component="pre" sx={{ m: 0, fontSize: '12px', overflow: 'auto' }}>
+                          {JSON.stringify(selectedStage.config, null, 2)}
+                        </Box>
+                      </Paper>
+                    </Box>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+            
+            {/* Pipeline Summary */}
+            <Box sx={{ mt: 4 }}>
+              <Typography variant="h6" gutterBottom>Pipeline Summary</Typography>
+              <Card variant="outlined">
+                <CardContent>
+                  {pipeline.length === 0 ? (
+                    <Typography color="text.disabled" textAlign="center" py={4}>
+                      No stages added yet. Use the left panel to begin building your pipeline.
+                    </Typography>
+                  ) : (
+                    <Box>
+                      {pipeline.map((node, i) => (
+                        <Box key={node.id}>
+                          <Box sx={{ 
+                            display: 'flex', 
+                            justifyContent: 'space-between', 
+                            alignItems: 'center', 
+                            py: 1.5,
+                            '&:hover': { bgcolor: 'action.hover' }
+                          }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                              <Chip 
+                                label={i + 1} 
+                                size="small" 
+                                sx={{ 
+                                  bgcolor: node.color, 
+                                  color: 'white',
+                                  minWidth: 32
+                                }} 
+                              />
+                              <Box>
+                                <Typography variant="body2">
+                                  <strong>{node.name}</strong>
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  {node.type}
+                                </Typography>
+                              </Box>
+                            </Box>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              {node.status === 'running' && (
+                                <LinearProgress 
+                                  variant="determinate" 
+                                  value={node.progress} 
+                                  sx={{ width: 60, height: 4 }}
+                                />
+                              )}
+                              {node.status === 'completed' && (
+                                <CheckCircleIcon color="success" fontSize="small" />
+                              )}
+                              {node.status === 'failed' && (
+                                <ErrorIcon color="error" fontSize="small" />
+                              )}
+                              <IconButton 
+                                size="small" 
+                                onClick={() => handleRemoveNode(node.id)}
+                                disabled={isRunning}
+                              >
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            </Box>
+                          </Box>
+                          {i < pipeline.length - 1 && <Divider />}
+                        </Box>
+                      ))}
+                    </Box>
+                  )}
+                </CardContent>
+              </Card>
+            </Box>
           </Grid>
         </Grid>
-      </Box>
+      </TabPanel>
+      
+      {/* History Tab */}
+      <TabPanel value={currentTab} index={1}>
+        <Grid container spacing={3}>
+          <Grid item xs={12} md={8}>
+            <Card>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Saved Pipelines
+                </Typography>
+                {pipelineHistory.length === 0 ? (
+                  <Typography color="text.disabled" textAlign="center" py={4}>
+                    No saved pipelines yet. Build and save a pipeline to see it here.
+                  </Typography>
+                ) : (
+                  <Box>
+                    {pipelineHistory.map(item => (
+                      <HistoryItem
+                        key={item.id}
+                        item={item}
+                        onLoad={loadFromHistory}
+                        onDelete={deleteFromHistory}
+                      />
+                    ))}
+                  </Box>
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
+          
+          <Grid item xs={12} md={4}>
+            <Card>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Pipeline Tips
+                </Typography>
+                <Typography variant="body2" color="text.secondary" paragraph>
+                  • Save your pipelines to reuse them later
+                </Typography>
+                <Typography variant="body2" color="text.secondary" paragraph>
+                  • Export pipelines to share with team members
+                </Typography>
+                <Typography variant="body2" color="text.secondary" paragraph>
+                  • Import JSON files to load existing pipelines
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  • Click on any saved pipeline to load it
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      </TabPanel>
+      
+      {/* Execution Logs Tab */}
+      <TabPanel value={currentTab} index={2}>
+        <Card>
+          <CardContent>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Typography variant="h6">Execution Logs</Typography>
+              {executionLogs.length > 0 && (
+                <Button
+                  size="small"
+                  onClick={() => setExecutionLogs([])}
+                  startIcon={<ClearIcon />}
+                >
+                  Clear
+                </Button>
+              )}
+            </Box>
+            
+            {executionLogs.length === 0 ? (
+              <Typography color="text.disabled" textAlign="center" py={4}>
+                No execution logs yet. Run a pipeline to see logs here.
+              </Typography>
+            ) : (
+              <Box
+                sx={{
+                  maxHeight: 500,
+                  overflow: 'auto',
+                  bgcolor: 'grey.900',
+                  color: 'grey.100',
+                  p: 2,
+                  borderRadius: 1,
+                  fontFamily: 'monospace',
+                  fontSize: '12px'
+                }}
+              >
+                {executionLogs.map((log, idx) => (
+                  <Box
+                    key={idx}
+                    sx={{
+                      mb: 1,
+                      color: log.level === 'error' ? 'error.light' :
+                             log.level === 'success' ? 'success.light' : 'grey.100'
+                    }}
+                  >
+                    <span style={{ color: 'grey.500' }}>
+                      [{new Date(log.timestamp).toLocaleTimeString()}]
+                    </span>{' '}
+                    {log.message}
+                  </Box>
+                ))}
+              </Box>
+            )}
+          </CardContent>
+        </Card>
+      </TabPanel>
+      
+      {/* Active Execution Monitor */}
+      {activeExecutionId && (
+        <Zoom in={!!activeExecutionId}>
+          <Box sx={{ position: 'fixed', bottom: 80, right: 24, width: 400, zIndex: 1000 }}>
+            <ExecutionMonitor executionId={activeExecutionId} />
+          </Box>
+        </Zoom>
+      )}
+      
+      {/* Save Pipeline Dialog */}
+      <Dialog open={saveDialogOpen} onClose={() => setSaveDialogOpen(false)}>
+        <DialogTitle>Save Pipeline</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Pipeline Name"
+            fullWidth
+            variant="outlined"
+            value={pipelineName}
+            onChange={(e) => setPipelineName(e.target.value)}
+            placeholder="Enter a name for this pipeline"
+          />
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+            {pipeline.length} stage{pipeline.length !== 1 ? 's' : ''} will be saved
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSaveDialogOpen(false)}>Cancel</Button>
+          <Button onClick={confirmSavePipeline} variant="contained">Save</Button>
+        </DialogActions>
+      </Dialog>
+
+      
+      {/* Settings Drawer */}
+      <Drawer
+        anchor="right"
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        sx={{
+          '& .MuiDrawer-paper': {
+            width: { xs: '100%', sm: 600, md: 800 },
+            boxSizing: 'border-box',
+          },
+        }}
+      >
+        <Settings onClose={() => setSettingsOpen(false)} />
+      </Drawer>
+      
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert 
+          severity={snackbar.severity} 
+          onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}
+          variant="filled"
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
+      
+      {/* Floating Action Button for quick actions */}
+      {pipeline.length > 0 && !isRunning && (
+        <Zoom in={pipeline.length > 0 && !isRunning}>
+          <Fab
+            color="primary"
+            sx={{ position: 'fixed', bottom: 24, right: 24 }}
+            onClick={handleRunPipeline}
+            title='Execute Piplines'
+          >
+            <PlayArrowIcon />
+          </Fab>
+        </Zoom>
+      )}
     </Container>
   );
 };

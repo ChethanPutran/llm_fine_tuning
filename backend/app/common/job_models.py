@@ -131,6 +131,24 @@ class BaseJob:
 
 
 @dataclass
+class PipelineJob(BaseJob):
+    """Pipeline job that can contain multiple sub-jobs"""
+    job_type: JobType = JobType.INFERENCE
+    pipeline_json: Dict[str, Any] = field(default_factory=dict)
+    
+    def __init__(self, job_id: UUID, pipeline_json: Dict[str, Any], **kwargs):
+        super().__init__(job_id=job_id, **kwargs)
+        self.pipeline_json = pipeline_json
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary with pipeline specific fields"""
+        base_dict = super().to_dict()
+        base_dict.update({
+            "pipeline_json": self.pipeline_json
+        })
+        return base_dict
+    
+@dataclass
 class DataCollectionJob(BaseJob):
     """Data collection job"""
     job_type: JobType = JobType.DATA_COLLECTION
@@ -490,5 +508,21 @@ class JobFactory:
             config=config or {},
             **kwargs
         )
-
+    
+    @staticmethod
+    def create_pipeline_job(
+        pipeline_json: Dict[str, Any],
+        priority: JobPriority = JobPriority.NORMAL,
+        user_id: Optional[str] = None,
+        tags: Optional[List[str]] = None
+    ) -> PipelineJob:
+        """Create a pipeline execution job"""
+        job = PipelineJob(
+            job_id=uuid4(),
+            pipeline_json=pipeline_json,
+            priority=priority,
+            user_id=user_id,
+            tags=tags or ["pipeline"]
+        )
+        return job
    

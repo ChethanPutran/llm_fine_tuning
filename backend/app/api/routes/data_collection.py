@@ -1,6 +1,6 @@
 # app/api/routes/data_collection.py
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
 import logging
@@ -20,39 +20,77 @@ class StartCollectionRequest(BaseModel):
     search_engine: str = Field("google", description="Search engine to use")
     limit: int = Field(100, ge=1, le=10000, description="Maximum number of documents")
     config: Dict[str, Any] = Field(default_factory=dict, description="Additional configuration")
+    auto_execute: bool = Field(True, description="Automatically execute the job after creation")
 
 
-@router.post("/start", response_model=Dict[str, Any])
-async def start_collection(
+@router.post("/add", response_model=Dict[str, Any])
+async def create_collection_job(
     request: StartCollectionRequest,
     controller: DataCollectionController = Depends(get_data_collection_controller)
 ):
     """
-    Start data collection job
+    Create a data collection job
     
-    Creates a pipeline with data collection node and executes it
+    Creates a job that can be executed later. If auto_execute is True,
+    the job will be executed immediately.
     """
     try:
-        result = await controller.start_job(
+        # Create the job
+        result = await controller.add_job(
             source=request.source,
             topic=request.topic,
             search_engine=request.search_engine,
             limit=request.limit,
             config=request.config,
-            user_id="system"  # In real implementation, get from auth context
+            user_id="system",  # In real implementation, get from auth context
+            tags=["api_created"]
         )
+        
+        # Auto-execute if requested
+        if request.auto_execute and result.get("job_id"):
+            job_id = result["job_id"]
+            execution_result = await controller.execute_job(job_id)
+            result["execution_id"] = execution_result.get("execution_id")
+            result["execution_status"] = "started"
+        
         return result
+        
     except Exception as e:
-        logger.error(f"Failed to start data collection: {e}")
+        logger.error(f"Failed to create data collection job: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/execute/{job_id}", response_model=Dict[str, Any])
+async def execute_collection_job(
+    job_id: str,
+    controller: DataCollectionController = Depends(get_data_collection_controller)
+):
+    """
+    Execute an existing data collection job
+    
+    Starts the execution of a previously created job.
+    """
+    try:
+        result = await controller.execute_job(job_id)
+        
+        if result.get("error"):
+            raise HTTPException(status_code=404, detail=result["error"])
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to execute data collection job: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/status/{job_id}", response_model=Dict[str, Any])
-async def get_status(
+async def get_job_status(
     job_id: str,
     controller: DataCollectionController = Depends(get_data_collection_controller)
 ):
-    """Get collection job status"""
+    """Get collection job status with details"""
     status = await controller.get_job_status(job_id)
     if not status:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -60,7 +98,7 @@ async def get_status(
 
 
 @router.post("/cancel/{job_id}", response_model=Dict[str, Any])
-async def cancel_collection(
+async def cancel_collection_job(
     job_id: str,
     controller: DataCollectionController = Depends(get_data_collection_controller)
 ):
@@ -76,17 +114,50 @@ async def cancel_collection(
 
 
 @router.get("/sources", response_model=List[str])
-async def get_sources():
+async def get_available_sources():
     """Get available data sources"""
     return ["web", "books", "news", "academic", "social_media"]
 
 
-@router.get("/jobs", response_model=List[Dict[str, Any]])
-async def list_jobs(
-    status: Optional[str] = None,
-    limit: int = 50,
-    offset: int = 0,
+@router.get("/jobs", response_model=Dict[str, Any])
+async def list_collection_jobs(
+    status: Optional[str] = Query(None, description="Filter by job status"),
+    source: Optional[str] = Query(None, description="Filter by data source"),
+    topic: Optional[str] = Query(None, description="Filter by topic (partial match)"),
+    user_id: Optional[str] = Query(None, description="Filter by user ID"),
+    limit: int = Query(50, ge=1, le=100, description="Number of jobs to return"),
+    offset: int = Query(0, ge=0, description="Number of jobs to skip"),
     controller: DataCollectionController = Depends(get_data_collection_controller)
 ):
-    """List all data collection jobs"""
-    return await controller.list_jobs(status=status, limit=limit, offset=offset)
+    """
+    List all data collection jobs with pagination and filters
+    
+    Returns a paginated list of jobs with total count.
+    """
+    result = await controller.list_jobs(
+        status=status,
+        limit=limit,
+        offset=offset,
+        source=source,
+        topic=topic,
+        user_id=user_id
+    )
+    return result
+
+
+@router.get("/statistics", response_model=Dict[str, Any])
+async def get_collection_statistics(
+    user_id: Optional[str] = Query(None, description="Filter by user ID"),
+    controller: DataCollectionController = Depends(get_data_collection_controller)
+):
+    """
+    Get statistics about data collection jobs
+    
+    Returns counts by status, source, and total documents collected.
+    """
+    try:
+        stats = await controller.get_statistics(user_id=user_id)
+        return stats
+    except Exception as e:
+        logger.error(f"Failed to get collection statistics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
