@@ -1,5 +1,6 @@
 # app/api/routes/deployment.py
 
+from aiohttp import request
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
@@ -7,23 +8,14 @@ import logging
 
 from app.dependencies.controller import get_deployment_controller
 from app.controllers.deployment_controller import DeploymentController
+from app.api.models import ListResourcesResponse, RequestBase, StartDeploymentRequest
+from app.api.models import ExecutionStatusResponse, JobCreationResponse, JobStatusResponse, ListJobsResponse, StartCollectionRequest, StatisticsResponse 
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/deployment", tags=["deployment"])
 
-
-class StartDeploymentRequest(BaseModel):
-    """Request model for starting deployment"""
-    model_path: str = Field(..., description="Path to the model to deploy")
-    serving_framework: str = Field(..., description="Framework for serving (torchserve, tensorflow-serving, onnx)")
-    deployment_target: str = Field("local", description="Deployment target (local, cloud, edge)")
-    config: Dict[str, Any] = Field(default_factory=dict, description="Deployment configuration")
-    auto_execute: bool = Field(True, description="Automatically execute the job after creation")
-    tags: Optional[List[str]] = Field(None, description="Optional tags for categorization")
-
-
-@router.post("/add", response_model=Dict[str, Any])
+@router.post("/add", response_model=JobCreationResponse)
 async def create_deployment_job(
     request: StartDeploymentRequest,
     controller: DeploymentController = Depends(get_deployment_controller)
@@ -32,22 +24,14 @@ async def create_deployment_job(
     try:
         # Create the job
         result = await controller.add_job(
-            model_path=request.model_path,
-            serving_framework=request.serving_framework,
-            deployment_target=request.deployment_target,
+            model_path=request.config.model_path,
+            serving_framework=request.config.serving_framework,
+            deployment_target=request.config.deployment_target,
             config=request.config,
             user_id="system",  # In real implementation, get from auth context
             tags=request.tags
         )
-        
-        # Auto-execute if requested
-        if request.auto_execute and result.get("job_id"):
-            job_id = result["job_id"]
-            execution_result = await controller.execute_job(job_id)
-            result["execution_id"] = execution_result.get("execution_id")
-            result["execution_status"] = "started"
-        
-        return result
+        return JobCreationResponse(**result)
         
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -56,7 +40,7 @@ async def create_deployment_job(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/execute/{job_id}", response_model=Dict[str, Any])
+@router.post("/execute/{job_id}", response_model=ExecutionStatusResponse)
 async def execute_deployment_job(
     job_id: str,
     controller: DeploymentController = Depends(get_deployment_controller)
@@ -68,7 +52,7 @@ async def execute_deployment_job(
         if result.get("error"):
             raise HTTPException(status_code=404, detail=result["error"])
         
-        return result
+        return ExecutionStatusResponse(**result)
         
     except HTTPException:
         raise
@@ -77,7 +61,7 @@ async def execute_deployment_job(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/status/{job_id}", response_model=Dict[str, Any])
+@router.get("/status/{job_id}", response_model=JobStatusResponse)
 async def get_deployment_status(
     job_id: str,
     controller: DeploymentController = Depends(get_deployment_controller)
@@ -86,10 +70,10 @@ async def get_deployment_status(
     status = await controller.get_job_status(job_id)
     if not status:
         raise HTTPException(status_code=404, detail="Job not found")
-    return status
+    return JobStatusResponse(**status)
 
 
-@router.get("/jobs", response_model=Dict[str, Any])
+@router.get("/jobs", response_model=ListJobsResponse)
 async def list_deployment_jobs(
     status: Optional[str] = Query(None, description="Filter by job status"),
     serving_framework: Optional[str] = Query(None, description="Filter by serving framework"),
@@ -106,7 +90,7 @@ async def list_deployment_jobs(
         limit=limit,
         offset=offset
     )
-    return result
+    return ListJobsResponse(**result)
 
 
 @router.get("/active", response_model=List[Dict[str, Any]])
@@ -114,19 +98,21 @@ async def list_active_deployments(
     controller: DeploymentController = Depends(get_deployment_controller)
 ):
     """List all active deployments"""
-    return await controller.list_deployments()
+    jobs = await controller.list_jobs()
+    active_deployments = [job for job in jobs.get("jobs", []) if job.get("status") == "deployed"]
+    return active_deployments
 
 
-@router.delete("/{deployment_id}", response_model=Dict[str, Any])
-async def undeploy_model(
-    deployment_id: str,
-    controller: DeploymentController = Depends(get_deployment_controller)
-):
-    """Undeploy a model"""
-    undeployed = await controller.undeploy_model(deployment_id)
-    if undeployed:
-        return {"status": "undeployed", "deployment_id": deployment_id}
-    raise HTTPException(status_code=404, detail="Deployment not found")
+# @router.delete("/{deployment_id}", response_model=Dict[str, Any])
+# async def undeploy_model(
+#     deployment_id: str,
+#     controller: DeploymentController = Depends(get_deployment_controller)
+# ):
+#     """Undeploy a model"""
+#     undeployed = await controller.undeploy_model(deployment_id)
+#     if undeployed:
+#         return {"status": "undeployed", "deployment_id": deployment_id}
+#     raise HTTPException(status_code=404, detail="Deployment not found")
 
 
 @router.delete("/jobs/{job_id}", response_model=Dict[str, Any])
@@ -141,7 +127,7 @@ async def cancel_deployment_job(
     raise HTTPException(status_code=400, detail="Job cannot be cancelled or not found")
 
 
-@router.get("/statistics", response_model=Dict[str, Any])
+@router.get("/statistics", response_model=StatisticsResponse)
 async def get_deployment_statistics(
     user_id: Optional[str] = Query(None, description="Filter by user ID"),
     controller: DeploymentController = Depends(get_deployment_controller)
@@ -149,19 +135,37 @@ async def get_deployment_statistics(
     """Get deployment statistics"""
     try:
         stats = await controller.get_statistics(user_id=user_id)
-        return stats
+        return StatisticsResponse(**stats)
     except Exception as e:
         logger.error(f"Failed to get deployment statistics: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/targets", response_model=List[str])
-async def get_deployment_targets():
+@router.get("/targets",  response_model=ListResourcesResponse)
+async def get_deployment_targets(
+request: RequestBase = Field(..., description="Request model for deployment targets"),
+):
     """Get available deployment targets"""
-    return ["local", "cloud", "edge"]
+    return ListResourcesResponse(
+        items=[
+        {"name": "local", "description": "Deploy on local machine"},
+        {"name": "cloud", "description": "Deploy on cloud platforms (AWS, GCP, Azure)"},
+        {"name": "edge", "description": "Deploy on edge devices (NVIDIA Jetson, Raspberry Pi)"}
+    ],
+    **request.dict()
+    )
 
 
-@router.get("/frameworks", response_model=List[str])
-async def get_serving_frameworks():
+@router.get("/frameworks", response_model=ListResourcesResponse)
+async def get_serving_frameworks(
+    request: RequestBase = Field(..., description="Request model for serving frameworks")
+):
     """Get available serving frameworks"""
-    return ["torchserve", "tensorflow-serving", "onnx"]
+    return ListResourcesResponse(
+        items=[
+            {"name": "torchserve", "description": "TorchServe"},
+            {"name": "tensorflow-serving", "description": "TensorFlow Serving"},
+            {"name": "onnx", "description": "ONNX Runtime"}
+        ],
+        **request.dict()
+    )

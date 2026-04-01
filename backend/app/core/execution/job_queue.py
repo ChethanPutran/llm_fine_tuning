@@ -2,7 +2,7 @@ import asyncio
 from typing import Optional, List, Dict, Any
 from uuid import UUID
 from queue import PriorityQueue
-from ...common.job_models import BaseJob, JobStatus, JobPriority
+from ...common.job_models import BaseJob, JobStatus
 
 class JobQueue:
     """

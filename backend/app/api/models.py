@@ -1,131 +1,166 @@
-from pydantic import BaseModel, Field, validator
-from typing import Optional, List, Dict, Any, Union
-from datetime import datetime
-from enum import Enum
+from pydantic import BaseModel, Field
+from typing import List, Optional, Dict, Any
+from app.common.job_models import JobPriority
+from app.common.job_models import JobPriority
+from app.core.data_collection.config import DataCollectionConfig
+from app.core.datasets.config import DatasetConfig
+from app.core.deployment.config import DeploymentConfig
+from app.core.finetuning.config import FinetuningConfig
+from app.core.models.config import ModelConfig
+from app.core.optimization.config import OptimizationConfig
+from app.core.pipeline_engine.config import PipelineConfig
+from app.core.pipeline_engine.config import PipelineConfig
+from app.core.preprocessing.config import PreprocessingConfig
+from app.core.training.config import TrainingConfig
+from app.core.tokenization.config import TokenizationConfig
 
-# Enums
-class ModelType(str, Enum):
-    BERT = "bert"
-    BART = "bart"
-    GPT = "gpt"
-    VIT = "vit"
-    VLM = "vlm"
+class RequestBase(BaseModel):
+    """Base request model with common fields"""
+    auto_execute: bool = Field(True, description="Automatically execute the job after creation")
+    tags: Optional[List[str]] = Field(None, description="Optional tags for categorization")
+    user_id: str = Field(..., description="User ID who triggered the request")
 
-class FinetuningStrategy(str, Enum):
-    FULL = "full"
-    LORA = "lora"
-    ADAPTER = "adapter"
-    PREFIX_TUNING = "prefix_tuning"
+class StartCollectionRequest(RequestBase):
+    """Request model for starting data collection"""
+    config: DataCollectionConfig = Field(default_factory=DataCollectionConfig, description="Configuration for data collection")
 
-class TaskType(str, Enum):
-    CLASSIFICATION = "classification"
-    SUMMARIZATION = "summarization"
-    QA = "qa"
-    GENERATION = "generation"
+class StartDeploymentRequest(RequestBase):
+    """Request model for starting deployment"""
+    config: DeploymentConfig = Field(default_factory=DeploymentConfig, description="Configuration for deployment")
 
-class OptimizationType(str, Enum):
-    PRUNING = "pruning"
-    DISTILLATION = "distillation"
-    QUANTIZATION = "quantization"
+class StartTrainingRequest(RequestBase):
+    """Request model for starting training"""
+    dataset_config: DatasetConfig = Field(default_factory=DatasetConfig, description="Dataset configuration")
+    train_model_config: ModelConfig = Field(default_factory=ModelConfig, description="Model configuration")
+    config: TrainingConfig = Field(default_factory=TrainingConfig, description="Training configuration")
 
-class DeploymentTarget(str, Enum):
-    LOCAL = "local"
-    CLOUD = "cloud"
-    EDGE = "edge"
-
-# Request Models
-class DataCollectionRequest(BaseModel):
-    source: str = Field(..., description="Data source (web, books)")
-    topic: str = Field(..., description="Topic to collect")
-    limit: int = Field(100, ge=1, le=10000, description="Maximum documents to collect")
-    config: Dict[str, Any] = Field(default_factory=dict, description="Additional configuration")
+class StartFinetuningRequest(RequestBase):
+    """Request model for starting fine-tuning"""
     
-    @validator('source')
-    def validate_source(cls, v):
-        if v not in ['web', 'books']:
-            raise ValueError('Source must be web or books')
-        return v
+    base_model_config: ModelConfig = Field(default_factory=ModelConfig, description="Base model configuration")
+    dataset_config: DatasetConfig = Field(default_factory=DatasetConfig, description="Dataset configuration")
+    config: FinetuningConfig = Field(default_factory=FinetuningConfig, description="Fine-tuning configuration")
 
-class PreprocessingRequest(BaseModel):
-    input_path: str = Field(..., description="Path to input data")
-    output_path: Optional[str] = Field(None, description="Path for processed output")
-    config: Dict[str, Any] = Field(default_factory=dict, description="Preprocessing configuration")
-    deduplicate: bool = Field(True, description="Enable deduplication")
-    extract_knowledge: bool = Field(True, description="Extract knowledge entities")
+class StartOptimizationRequest(RequestBase):
+    """Request model for starting optimization"""
+    config: OptimizationConfig = Field(default_factory=OptimizationConfig, description="Optimization configuration")
 
-class TokenizationRequest(BaseModel):
-    tokenizer_type: str = Field(..., description="Tokenizer type (bpe, wordpiece, sentencepiece)")
-    corpus_path: str = Field(..., description="Path to training corpus")
-    vocab_size: int = Field(50000, ge=1000, le=200000, description="Vocabulary size")
-    output_path: str = Field(..., description="Path to save tokenizer")
-    field: Optional[str] = Field('content_clean', description="Field to tokenize (for structured data)")
-    config: Dict[str, Any] = Field(default_factory=dict, description="Tokenizer configuration")
+class StartPreprocessingRequest(RequestBase):
+    """Request model for starting preprocessing"""
+    config: PreprocessingConfig = Field(..., description="Preprocessing configuration")
 
-class TrainingRequest(BaseModel):
-    model_type: ModelType = Field(..., description="Type of model to train")
-    model_name: str = Field(..., description="Pretrained model name")
-    dataset_path: str = Field(..., description="Path to training dataset")
-    task: TaskType = Field(TaskType.CLASSIFICATION, description="Task type")
-    config: Dict[str, Any] = Field(default_factory=dict, description="Training configuration")
+class TrainTokenizerRequest(RequestBase):
+    """Request model for training tokenizer"""
+    config: TokenizationConfig = Field(default_factory=TokenizationConfig, description="Additional configuration")
 
-class FinetuningRequest(BaseModel):
-    model_type: ModelType = Field(..., description="Type of model to fine-tune")
-    model_name: str = Field(..., description="Pretrained model name")
-    strategy: FinetuningStrategy = Field(FinetuningStrategy.FULL, description="Fine-tuning strategy")
-    task: TaskType = Field(..., description="Task type")
-    dataset_path: str = Field(..., description="Path to fine-tuning dataset")
-    config: Dict[str, Any] = Field(default_factory=dict, description="Fine-tuning configuration")
+class EncodeRequest(RequestBase):
+    """Request model for encoding text"""
+    tokenizer_path: str = Field(..., description="Path to tokenizer")
+    text: str = Field(..., description="Text to encode")
+    max_length: Optional[int] = Field(None, description="Maximum sequence length")
 
-class OptimizationRequest(BaseModel):
-    model_path: str = Field(..., description="Path to model to optimize")
-    optimization_type: OptimizationType = Field(..., description="Optimization type")
-    config: Dict[str, Any] = Field(default_factory=dict, description="Optimization configuration")
+class DecodeRequest(RequestBase):
+    """Request model for decoding tokens"""
+    tokenizer_path: str = Field(..., description="Path to tokenizer")
+    token_ids: List[int] = Field(..., description="Token IDs to decode")
 
-class DeploymentRequest(BaseModel):
-    model_path: str = Field(..., description="Path to model to deploy")
-    deployment_target: DeploymentTarget = Field(DeploymentTarget.LOCAL, description="Deployment target")
-    serving_framework: str = Field(..., description="Serving framework")
-    config: Dict[str, Any] = Field(default_factory=dict, description="Deployment configuration")
+class ExecutePipelineRequest(RequestBase):
+    """Request model for executing a pipeline"""
+    config: PipelineConfig = Field(..., description="Pipeline execution configuration")
+    priority: JobPriority = Field(JobPriority.NORMAL, description="Execution priority")
+
+class CreatePipelineJobRequest(RequestBase):
+    """Request model for creating a pipeline job"""
+    config: PipelineConfig = Field(..., description="Pipeline configuration for job creation")
+
+
 
 # Response Models
-class JobResponse(BaseModel):
-    job_id: str = Field(..., description="Job identifier")
-    status: str = Field(..., description="Job status")
-    message: Optional[str] = Field(None, description="Status message")
 
-class StatusResponse(BaseModel):
-    job_id: str = Field(..., description="Job identifier")
-    status: str = Field(..., description="Current status")
-    progress: int = Field(0, ge=0, le=100, description="Progress percentage")
-    result: Optional[Dict[str, Any]] = Field(None, description="Job result")
-    error: Optional[str] = Field(None, description="Error message if failed")
-    created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: datetime = Field(default_factory=datetime.now)
+class ResponseBase(BaseModel):
+    """Base request model with common fields"""
+    tags: Optional[List[str]] = Field(None, description="Optional tags for categorization")
+    user_id: Optional[str] = Field(None, description="User ID who triggered the request")
+    status: str = Field(..., description="Current status of the fine-tuning job")
+    message: Optional[str] = Field(default=None, description="Additional information about the job status")
+    error: Optional[str] = Field(default=None, description="Error message if the job failed")
 
-class MetricsResponse(BaseModel):
-    accuracy: Optional[float] = None
-    f1_score: Optional[float] = None
-    precision: Optional[float] = None
-    recall: Optional[float] = None
-    perplexity: Optional[float] = None
-    train_loss: Optional[float] = None
-    eval_loss: Optional[float] = None
-    total_parameters: Optional[int] = None
-    trainable_parameters: Optional[int] = None
+class JobCreationResponse(ResponseBase):
+    """Response model for job creation"""
+    job_id: str = Field(..., description="Job identifier")
+
+class JobStatusResponse(ResponseBase):
+    """Response model for job status"""
+    job_id: str = Field(..., description="Job identifier")
+    job_type: str = Field(..., description="Type of the job (e.g., training, fine-tuning, data collection)")
+    progress: Optional[float] = Field(None, description="Progress percentage of the job")
+
+class ExecutionStatusResponse(ResponseBase):
+    """Response model for execution status"""
+    execution_id: str = Field(..., description="Execution identifier")
+    job_id: str = Field(..., description="Associated job identifier")
+    progress: Optional[float] = Field(None, description="Progress percentage of the execution")
+
+class ListJobsResponse(ResponseBase):
+    """Response model for listing jobs"""
+    jobs: List[JobStatusResponse] = Field(..., description="List of jobs matching the criteria")
+
+class StaticResourceResponse(ResponseBase):
+    """Response model for static resource requests"""
+    resource_id: str = Field(..., description="Identifier for the requested resource")
+    url: str = Field(..., description="URL to access the resource")
     
-class ModelInfo(BaseModel):
-    model_type: str
-    model_name: str
-    parameters: Dict[str, int]
-    task: Optional[str] = None
-    status: str
-    created_at: datetime
+class StatisticsResponse(ResponseBase):
+    """Response model for statistics requests"""
+    total_jobs: int = Field(..., description="Total number of jobs")
+    completed_jobs: int = Field(..., description="Number of completed jobs")
+    failed_jobs: int = Field(..., description="Number of failed jobs")
+    in_progress_jobs: int = Field(..., description="Number of jobs in progress")
 
-class DeploymentInfo(BaseModel):
-    deployment_id: str
-    endpoint: str
-    framework: str
-    status: str
-    model_path: str
-    config: Dict[str, Any]
-    created_at: datetime
+class MetricResponse(ResponseBase):
+    """Response model for metric retrieval"""
+    metric_name: str = Field(..., description="Name of the metric")
+    value: Any = Field(..., description="Value of the metric")
+
+class LogsResponse(ResponseBase):
+    """Response model for logs retrieval"""
+    logs: List[str] = Field(..., description="List of log entries")
+    tail: int = Field(..., description="Number of log lines returned from the end")
+
+class ListResourcesResponse(ResponseBase):
+    """Response model for listing resources"""
+    items: List[Dict[str, Any]] = Field(..., description="List of resources")
+
+class PipelineExecutionResponse(ExecutionStatusResponse):
+    """Response model for pipeline execution"""
+    pass
+
+class Template:
+    """Response model for template retrieval"""
+    template_id: str = Field(..., description="Identifier for the retrieved template")
+    content: Dict[str, Any] = Field(..., description="Content of the template")
+    name: Optional[str] = Field(None, description="Name of the template")
+    description: Optional[str] = Field(None, description="Description of the template")
+    description: Optional[str] = Field(None, description="Description of the template")
+    tags: Optional[List[str]] = Field(None, description="Tags associated with the template")
+    nodes: Optional[int] = Field(None, description="Number of nodes in the pipeline template")
+    
+class TemplateListResponse(ResponseBase):
+    """Response model for listing pipeline templates"""
+    templates: Dict[str,Template] = Field(..., description="List of available pipeline templates")
+
+class FinetuningStatusResponse(ResponseBase):
+    """Response model for fine-tuning job status"""
+    pass
+
+class FinetuningResponse(ResponseBase):
+    """Response model for fine-tuning job status"""
+    pass
+
+class ValidationResponse(ResponseBase):
+    """Response model for pipeline validation"""
+    valid: bool = Field(..., description="Indicates if the pipeline configuration is valid")
+    errors: Optional[List[str]] = Field(None, description="List of validation errors if the configuration is invalid")
+    nodes: Optional[int] = Field(None, description="Number of nodes in the pipeline configuration")
+    edges: Optional[int] = Field(None, description="Number of edges in the pipeline configuration")
+    

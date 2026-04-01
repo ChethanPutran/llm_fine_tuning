@@ -24,20 +24,18 @@ class OptimizationHandler(BaseHandler):
         await self._mark_started(job.job_id)
         
         try:
+            config = job.config
             await self._update_progress(job.job_id, 10, "Initializing optimizer")
             
             # Get optimizer
-            optimizer = OptimizerFactory.get_optimizer(
-                job.optimization_type,
-                job.config
-            )
+            optimizer = OptimizerFactory.get_optimizer(config)
             
             await self._update_progress(job.job_id, 30, "Loading model")
             
             # Load model
-            model = optimizer.load_model(job.input_model_path)
+            model = optimizer.load_model(config.input_model_path)
             
-            await self._update_progress(job.job_id, 50, f"Applying {job.optimization_type}")
+            await self._update_progress(job.job_id, 50, f"Applying {config.optimization_type}")
             
             # Apply optimization
             optimized_model = optimizer.optimize(model)
@@ -54,18 +52,18 @@ class OptimizationHandler(BaseHandler):
             result = {
                 "success": True,
                 "output_path": output_path,
-                "optimization_type": job.optimization_type,
+                "optimization_type": config.optimization_type,
                 "metrics": metrics,
                 "original_size": optimizer.original_size,
                 "optimized_size": optimizer.optimized_size,
                 "compression_ratio": optimizer.original_size / optimizer.optimized_size if optimizer.optimized_size > 0 else 0
             }
             
-            job.output_model_path = output_path
+            config.output_model_path = output_path
+            config.original_size = optimizer.original_size
+            config.optimized_size = optimizer.optimized_size
+            config.compression_ratio = result["compression_ratio"]
             job.metrics = metrics
-            job.original_size = optimizer.original_size
-            job.optimized_size = optimizer.optimized_size
-            job.compression_ratio = result["compression_ratio"]
             job.result = result
             
             await self._mark_completed(job.job_id, result)

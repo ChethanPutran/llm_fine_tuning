@@ -3,6 +3,7 @@ from .base import BaseOptimizer
 from .pruning import PruningOptimizer
 from .distillation import DistillationOptimizer
 from .quantization import QuantizationOptimizer
+from .config import OptimizationConfig
 
 class OptimizerFactory:
     """Factory pattern for creating optimizers"""
@@ -14,8 +15,9 @@ class OptimizerFactory:
     }
     
     @classmethod
-    def get_optimizer(cls, optimizer_type: str, config: Dict[str, Any]) -> BaseOptimizer:
+    def get_optimizer(cls,config: OptimizationConfig) -> BaseOptimizer:
         """Get optimizer instance by type"""
+        optimizer_type = config.optimization_type
         optimizer_class = cls._optimizers.get(optimizer_type.lower())
         if not optimizer_class:
             raise ValueError(f"Unknown optimizer type: {optimizer_type}. Available: {list(cls._optimizers.keys())}")

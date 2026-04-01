@@ -9,10 +9,8 @@ import logging
 
 from app.common.job_models import DeploymentJob
 from app.core.pipeline_engine.handlers.base_handler import BaseHandler
-from app.core.deployment.deployment_pipeline import DeploymentPipeline
-from app.core.deployment.torchserve import TorchServeDeployment
-from app.core.deployment.tensorflow_serving import TensorFlowServing
-from app.core.deployment.onnx import ONNXDeployment
+from app.core.deployment.factory import DeploymentFactory
+from app.core.deployment.pipeline import DeploymentPipeline
 
 logger = logging.getLogger(__name__)
 
@@ -26,29 +24,23 @@ class DeploymentHandler(BaseHandler):
         await self._mark_started(job.job_id)
         
         try:
+            config = job.config
             await self._update_progress(job.job_id, 10, "Creating deployment pipeline")
             
             # Create deployment pipeline
-            pipeline = DeploymentPipeline(job.config)
+            pipeline = DeploymentPipeline(config)
             
-            await self._update_progress(job.job_id, 30, f"Using {job.serving_framework}")
+            await self._update_progress(job.job_id, 30, f"Using {config.serving_framework}")
             
             # Select deployment strategy
-            if job.serving_framework == "torchserve":
-                deployer = TorchServeDeployment(job.config)
-            elif job.serving_framework == "tensorflow-serving":
-                deployer = TensorFlowServing(job.config)
-            elif job.serving_framework == "onnx":
-                deployer = ONNXDeployment(job.config)
-            else:
-                raise ValueError(f"Unsupported framework: {job.serving_framework}")
+            deployer = DeploymentFactory.get_deployer(config.serving_framework, config)
             
-            await self._update_progress(job.job_id, 50, f"Deploying to {job.deployment_target}")
+            await self._update_progress(job.job_id, 50, f"Deploying to {config.deployment_target}")
             
-            # Deploy model
+            # Deploy the model
             deployment_info = await deployer.deploy(
-                job.model_path,
-                job.deployment_target
+                config.model_path,
+                config.deployment_target
             )
             
             await self._update_progress(job.job_id, 80, "Finalizing deployment")
@@ -64,13 +56,13 @@ class DeploymentHandler(BaseHandler):
                 "status": "active",
                 "deployment_info": deployment_info,
                 "pipeline_result": pipeline_result,
-                "serving_framework": job.serving_framework,
-                "deployment_target": job.deployment_target
+                "serving_framework": config.serving_framework,
+                "deployment_target": config.deployment_target
             }
             
-            job.deployment_id = deployment_info.get("model_id", str(job.job_id))
-            job.endpoint = deployment_info.get("endpoint")
-            job.status_info = deployment_info
+            config.deployment_id = deployment_info.get("model_id", str(job.job_id))
+            config.endpoint = deployment_info.get("endpoint")
+            config.status_info = deployment_info
             job.result = result
             
             await self._mark_completed(job.job_id, result)

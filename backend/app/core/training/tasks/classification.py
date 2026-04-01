@@ -3,9 +3,9 @@ import torch.nn as nn
 from typing import Dict, Any, List
 import numpy as np
 from sklearn.metrics import accuracy_score, f1_score
-from ..base import FinetuningTask
+from .base import TrainingTask
 
-class ClassificationTask(FinetuningTask):
+class ClassificationTask(TrainingTask):
     """Text classification task"""
     
     def __init__(self, config: Dict[str, Any]):

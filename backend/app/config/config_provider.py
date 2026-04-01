@@ -8,7 +8,7 @@ from app.core.rag.config import RAGConfig
 from app.core.finetuning.config import FinetuningConfig
 from app.core.evaluation.config import EvaluationConfig
 from app.core.pipeline_engine.config import PipelineConfig
-from app.core.training.configs import TrainingConfig
+from app.core.training.config import TrainingConfig
 from app.core.deployment.config import DeploymentConfig
 
 

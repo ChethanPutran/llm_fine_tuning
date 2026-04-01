@@ -1,4 +1,4 @@
-from typing import List, Set, Dict, Tuple
+from typing import Any, List, Set, Dict, Tuple
 from collections import deque, defaultdict
 from .models import Pipeline
 
@@ -13,7 +13,7 @@ class DAGValidator:
         self._graph: Dict[str, List[str]] = defaultdict(list)
         self._reverse_graph: Dict[str, List[str]] = defaultdict(list)
     
-    def validate(self) -> Tuple[bool, List[str]]:
+    async def validate(self) -> Tuple[bool, List[str]]:
         """
         Validate the pipeline DAG
         Returns: (is_valid, list_of_errors)
@@ -37,7 +37,7 @@ class DAGValidator:
         
         return len(errors) == 0, errors
     
-    def _build_graphs(self) -> None:
+    async def _build_graphs(self) -> None:
         """Build adjacency lists for the DAG"""
         self._graph.clear()
         self._reverse_graph.clear()
@@ -47,7 +47,7 @@ class DAGValidator:
                 self._graph[edge.source].append(edge.target)
                 self._reverse_graph[edge.target].append(edge.source)
     
-    def _detect_cycle(self) -> List[str]:
+    async def _detect_cycle(self) -> List[str]:
         """Detect cycles using DFS"""
         visited: Set[str] = set()
         rec_stack: Set[str] = set()
@@ -137,3 +137,8 @@ class DAGValidator:
                     queue.append(neighbor)
         
         return execution_order
+    @staticmethod
+    async def from_dict(data: Dict[str, Any]) -> 'DAGValidator':
+        """Create a DAGValidator from a dictionary representation of a pipeline"""
+        pipeline = Pipeline.from_dict(data)
+        return DAGValidator(pipeline)

@@ -1,1 +1,1 @@
-from .factory import FinetuningTaskFactory
+from .factory import TrainingTaskFactory

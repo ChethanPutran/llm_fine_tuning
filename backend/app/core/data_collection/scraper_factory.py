@@ -1,7 +1,8 @@
 from typing import Dict, Any
 
 from pydantic import BaseModel, ConfigDict
-from .base import BaseConfig, BaseCrawler,BaseScraper
+from .config import BaseConfig
+from .base import BaseCrawler,BaseScraper
 from .web_scraper import WebScraper
 from .book_scraper import BookScraper
 

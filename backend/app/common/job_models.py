@@ -4,7 +4,8 @@ from enum import Enum
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
 from uuid import UUID, uuid4
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
+from .enums import NodeType, JobType, JobStatus, JobPriority
 from ..config.config_provider import (
     PipelineConfig,
     DataCollectionConfig,
@@ -18,39 +19,6 @@ from ..config.config_provider import (
     ModelConfig,
     DatasetConfig
 )
-
-class JobPriority(Enum):
-    """Job priority levels"""
-    CRITICAL = 0
-    HIGH = 1
-    NORMAL = 2
-    LOW = 3
-    BACKGROUND = 4
-
-
-class JobStatus(Enum):
-    """Job status states"""
-    PENDING = "pending"
-    QUEUED = "queued"
-    RUNNING = "running"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
-    RETRYING = "retrying"
-
-
-class JobType(Enum):
-    """Types of jobs"""
-    DATA_COLLECTION = "data_collection"
-    DATA_PROCESSING = "data_processing"
-    TRAINING = "training"
-    FINETUNING = "finetuning"
-    OPTIMIZATION = "optimization"
-    EVALUATION = "evaluation"
-    DEPLOYMENT = "deployment"
-    TOKENIZATION = "tokenization"
-    INFERENCE = "inference"
-
 
 
 class BaseJob(BaseModel):
@@ -76,6 +44,7 @@ class BaseJob(BaseModel):
     max_retries: int = Field(3)
     tags: List[str] = Field(default_factory=list)
     metrics: Dict[str, Any] = Field(default_factory=dict)
+    retry_policy: Dict[str, Any] = Field(default_factory=lambda: {"retries": 3, "delay_seconds": 5})
 
     def update_progress(self, progress: float):
         """Update job progress (0.0 to 100.0)"""
@@ -106,6 +75,12 @@ class BaseJob(BaseModel):
     def mark_cancelled(self):
         """Mark job as cancelled"""
         self.status = JobStatus.CANCELLED
+        self.completed_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(timezone.utc)
+
+    def mark_removed(self):
+        """Mark job as removed"""
+        self.status = JobStatus.REMOVED
         self.completed_at = datetime.now(timezone.utc)
         self.updated_at = datetime.now(timezone.utc)
     
@@ -169,204 +144,161 @@ class EvaluationJob(BaseJob):
     job_type: JobType = JobType.EVALUATION
     config: EvaluationConfig = Field(default=EvaluationConfig())
    
-
+PRIORITY_MAP = {
+               JobType.DATA_COLLECTION: JobPriority.CRITICAL,
+                JobType.DATA_PROCESSING: JobPriority.HIGH,
+                JobType.TRAINING: JobPriority.HIGH,
+                JobType.FINETUNING: JobPriority.NORMAL,
+                JobType.OPTIMIZATION: JobPriority.NORMAL,
+                JobType.DEPLOYMENT: JobPriority.LOW,
+                JobType.EVALUATION: JobPriority.NORMAL,
+                JobType.TOKENIZATION: JobPriority.LOW,
+                JobType.INFERENCE: JobPriority.BACKGROUND
+            }
+            
 # Factory function to create jobs
 class JobFactory:
     """Factory for creating different types of jobs"""
-    
+    @staticmethod
+    def create_job_metadata(name: str, node_type: NodeType, job: BaseJob, description: Optional[str] = None,config: Dict[str, Any] = {}, tags: Optional[List[str]] = None) -> Dict[str, Any]:
+        """Generate job metadata"""
+        return {
+            "name": name,
+            "node_type": node_type,
+            "retry_policy": config.get("retry_policy", {"retries": 3, "delay_seconds": 5}),
+            "position": config.get("position", (0, 0)),
+            "description": description or "",
+            "tags": tags or [],
+            "resources": JobFactory.get_required_job_resource(JobType.DATA_PROCESSING)
+        }
+    @staticmethod
+    def get_required_job_resource(job_type: JobType) -> Dict[str, Any]:
+        """Get required resources for a given job type"""
+        resource_mapping = {
+            JobType.DATA_COLLECTION: {"cpu": 2, "memory": "4GB"},
+            JobType.DATA_PROCESSING: {"cpu": 4, "memory": "8GB"},
+            JobType.TRAINING: {"gpu": 1, "cpu": 8, "memory": "32GB"},
+            JobType.FINETUNING: {"gpu": 1, "cpu": 4, "memory": "16GB"},
+            JobType.OPTIMIZATION: {"gpu": 1, "cpu": 4, "memory": "16GB"},
+            JobType.DEPLOYMENT: {"cpu": 2, "memory": "4GB"},
+            JobType.EVALUATION: {"gpu": 1, "cpu": 4, "memory": "16GB"},
+            JobType.TOKENIZATION: {"cpu": 4, "memory": "8GB"},
+            JobType.INFERENCE: {"gpu": 1, "cpu": 4, "memory": "16GB"}
+        }
+        return resource_mapping.get(job_type, {"cpu": 2, "memory": "4GB"})
+
     @staticmethod
     def create_data_collection_job(
-        source: str,
-        topic: str,
-        limit: int = 100,
-        config: Optional[Dict[str, Any]] = None,
+        data_collection_config: DataCollectionConfig,
         **kwargs
     ) -> DataCollectionJob:
         """Create a data collection job"""
-        job_config = DataCollectionConfig(
-            source=source,
-            topic=topic,
-            limit=limit,
-            additional_params=config or {}
-        )
         return DataCollectionJob(
-            config=job_config,
+            config=data_collection_config,
+            priority=PRIORITY_MAP.get(JobType.DATA_COLLECTION, JobPriority.NORMAL),
             **kwargs
         )
     
     @staticmethod
     def create_preprocessing_job(
-        input_path: str,
-        output_path: str,
-        config: Optional[Dict[str, Any]] = None,
+        preprocessing_config: PreprocessingConfig = Field(default_factory=PreprocessingConfig),
         **kwargs
     ) -> PreprocessingJob:
         """Create a preprocessing job"""
-        job_config = PreprocessingConfig(
-            input_path=input_path,
-            output_path=output_path,
-            additional_params=config or {}
-        )
         return PreprocessingJob(
-            config=job_config,
+            config=preprocessing_config,
+            priority=PRIORITY_MAP.get(JobType.DATA_PROCESSING, JobPriority.NORMAL),
             **kwargs
         )
     
     @staticmethod
     def create_training_job(
-        model_type: str,
-        model_name: str,
-        dataset_path: str,
-        config: Optional[Dict[str, Any]] = None,
+        training_config: TrainingConfig,
+        model_config: ModelConfig,
+        dataset_config: DatasetConfig,
         **kwargs
     ) -> TrainingJob:
         """Create a training job"""
-        training_config = TrainingConfig(
-            additional_params=config or {}
-        )
-        model_config = ModelConfig(
-            model_type=model_type,
-            model_name=model_name,
-            additional_params=config or {},
-            tokenizer=model_name  # Assuming tokenizer name is same as model name, can be customized
-        )
-        dataset_config = DatasetConfig(
-            dataset_path=dataset_path,
-            additional_params=config or {}
-        )
         return TrainingJob(
             train_model_config=model_config,
             dataset_config=dataset_config,
             config=training_config,
+            priority=PRIORITY_MAP.get(JobType.TRAINING, JobPriority.NORMAL),
             **kwargs
         )
     
     @staticmethod
     def create_finetuning_job(
-        base_model_type: str,
-        base_model_name: str,
-        strategy_type: str,
-        task_type: str,
-        dataset_path: str,
-        config: Optional[Dict[str, Any]] = None,
+        finetune_config: FinetuningConfig,
+        base_model_config: ModelConfig,
+        dataset_config: DatasetConfig,
         **kwargs
     ) -> FinetuningJob:
         """Create a fine-tuning job"""
-        finetune_config = FinetuningConfig(
-            strategy_type=strategy_type,
-            task_type=task_type,
-            additional_params=config or {}
-        )
-        base_model_config = ModelConfig(
-            model_type=base_model_type,
-            model_name=base_model_name,
-            additional_params=config or {},
-            tokenizer=base_model_name  # Assuming tokenizer name is same as model name, can be customized
-        )   
-        dataset_config = DatasetConfig(
-            dataset_path=dataset_path,
-            additional_params=config or {}
-        )
         return FinetuningJob(
             config=finetune_config,
             base_model_config=base_model_config,
+            priority=PRIORITY_MAP.get(JobType.FINETUNING, JobPriority.NORMAL),
             dataset_config=dataset_config,
             **kwargs
         )
 
     @staticmethod
     def create_optimization_job(
-        optimization_type: str,
-        input_model_path: str,
-        config: Optional[Dict[str, Any]] = None,
+        optimization_config: OptimizationConfig,
         **kwargs
     ) -> OptimizationJob:
         """Create an optimization job"""
-        optimization_config = OptimizationConfig(
-            optimization_type=optimization_type,
-            input_model_path=input_model_path,
-            additional_params=config or {}
-        )
         return OptimizationJob(
             config=optimization_config,
+            priority=PRIORITY_MAP.get(JobType.OPTIMIZATION, JobPriority.NORMAL),
             **kwargs
         )
     
     @staticmethod
     def create_deployment_job(
-        model_path: str,
-        serving_framework: str,
-        deployment_target: str,
-        config: Optional[Dict[str, Any]] = None,
+        deployment_config: DeploymentConfig,
         **kwargs
     ) -> DeploymentJob:
         """Create a deployment job"""
-        deployment_config = DeploymentConfig(
-            model_path=model_path,
-            serving_framework=serving_framework,
-            deployment_target=deployment_target,
-            additional_params=config or {}
-        )
         return DeploymentJob(
             config=deployment_config,
+            priority=PRIORITY_MAP.get(JobType.DEPLOYMENT, JobPriority.NORMAL),
             **kwargs
         )
     
     @staticmethod
     def create_tokenization_job(
-        tokenizer_type: str,
-        dataset_path: str,
-        vocab_size: int,
-        config: Optional[Dict[str, Any]] = None,
+        tokenization_config: TokenizationConfig,
         **kwargs
     ) -> TokenizationJob:
         """Create a tokenization job"""
-        tokenization_config = TokenizationConfig(
-            tokenizer_type=tokenizer_type,
-            dataset_path=dataset_path,
-            vocab_size=vocab_size,
-            additional_params=config or {}
-        )
         return TokenizationJob(
             config=tokenization_config,
+            priority=PRIORITY_MAP.get(JobType.TOKENIZATION, JobPriority.NORMAL),
             **kwargs
         )
     
     @staticmethod
     def create_evaluation_job(
-        model_path: str,
-        dataset_path: str,
-        config: Optional[Dict[str, Any]] = None,
+        evaluation_config: EvaluationConfig,
         **kwargs
     ) -> EvaluationJob:
         """Create an evaluation job"""
-        evaluation_config = EvaluationConfig(
-            model_path=model_path,
-            dataset_path=dataset_path,
-            additional_params=config or {}
-        )
         return EvaluationJob(
             config=evaluation_config,
+            priority=PRIORITY_MAP.get(JobType.EVALUATION, JobPriority.NORMAL),
             **kwargs
         )
     
     @staticmethod
     def create_pipeline_job(
-        pipeline_json: Dict[str, Any],
-        priority: JobPriority = JobPriority.NORMAL,
-        user_id: Optional[str] = None,
-        tags: Optional[List[str]] = None,
+        pipeline_config: PipelineConfig,
         **kwargs
     ) -> PipelineJob:
         """Create a pipeline execution job"""
-        pipeline_config = PipelineConfig(
-            pipeline_json=pipeline_json,
-            priority=priority,
-            user_id=user_id,
-            tags=tags or ["pipeline"]
-        )
-        job = PipelineJob(
+        return PipelineJob(
             config=pipeline_config,
+            priority=PRIORITY_MAP.get(JobType.INFERENCE, JobPriority.BACKGROUND),
             **kwargs
         )
-        return job

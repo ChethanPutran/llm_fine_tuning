@@ -7,36 +7,15 @@ import logging
 
 from app.dependencies.controller import get_tokenization_controller
 from app.controllers.tokenization_controller import TokenizationController
+from app.api.models import TrainTokenizerRequest, EncodeRequest, DecodeRequest
+from app.api.models import ListResourcesResponse, MetricResponse, RequestBase, StartOptimizationRequest, ExecutionStatusResponse, JobCreationResponse, JobStatusResponse, ListJobsResponse, StartCollectionRequest, StatisticsResponse 
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tokenization", tags=["tokenization"])
 
 
-class TrainTokenizerRequest(BaseModel):
-    """Request model for training tokenizer"""
-    tokenizer_type: str = Field(..., description="Type of tokenizer (bpe, wordpiece, sentencepiece)")
-    dataset_path: str = Field(..., description="Path to training dataset")
-    vocab_size: int = Field(32000, ge=1000, le=100000, description="Vocabulary size")
-    config: Dict[str, Any] = Field(default_factory=dict, description="Additional configuration")
-    auto_execute: bool = Field(True, description="Automatically execute the job after creation")
-    tags: Optional[List[str]] = Field(None, description="Optional tags for categorization")
-
-
-class EncodeRequest(BaseModel):
-    """Request model for encoding text"""
-    tokenizer_path: str = Field(..., description="Path to tokenizer")
-    text: str = Field(..., description="Text to encode")
-    max_length: Optional[int] = Field(None, description="Maximum sequence length")
-
-
-class DecodeRequest(BaseModel):
-    """Request model for decoding tokens"""
-    tokenizer_path: str = Field(..., description="Path to tokenizer")
-    token_ids: List[int] = Field(..., description="Token IDs to decode")
-
-
-@router.post("/add", response_model=Dict[str, Any])
+@router.post("/add", response_model=JobCreationResponse)
 async def create_tokenizer_job(
     request: TrainTokenizerRequest,
     controller: TokenizationController = Depends(get_tokenization_controller)
@@ -45,22 +24,13 @@ async def create_tokenizer_job(
     try:
         # Create the job
         result = await controller.add_job(
-            tokenizer_type=request.tokenizer_type,
-            dataset_path=request.dataset_path,
-            vocab_size=request.vocab_size,
             config=request.config,
             user_id="system",  # In real implementation, get from auth context
-            tags=request.tags
+            tags=request.tags,
+            auto_execute=request.auto_execute
         )
         
-        # Auto-execute if requested
-        if request.auto_execute and result.get("job_id"):
-            job_id = result["job_id"]
-            execution_result = await controller.execute_job(job_id)
-            result["execution_id"] = execution_result.get("execution_id")
-            result["execution_status"] = "started"
-        
-        return result
+        return JobCreationResponse(**result)
         
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -69,7 +39,7 @@ async def create_tokenizer_job(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/execute/{job_id}", response_model=Dict[str, Any])
+@router.post("/execute/{job_id}", response_model=ExecutionStatusResponse)
 async def execute_tokenizer_job(
     job_id: str,
     controller: TokenizationController = Depends(get_tokenization_controller)
@@ -81,7 +51,7 @@ async def execute_tokenizer_job(
         if result.get("error"):
             raise HTTPException(status_code=404, detail=result["error"])
         
-        return result
+        return ExecutionStatusResponse(**result)
         
     except HTTPException:
         raise
@@ -129,7 +99,7 @@ async def decode_tokens(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/status/{job_id}", response_model=Dict[str, Any])
+@router.get("/status/{job_id}", response_model=JobStatusResponse)
 async def get_tokenization_status(
     job_id: str,
     controller: TokenizationController = Depends(get_tokenization_controller)
@@ -138,10 +108,10 @@ async def get_tokenization_status(
     status = await controller.get_job_status(job_id)
     if not status:
         raise HTTPException(status_code=404, detail="Job not found")
-    return status
+    return JobStatusResponse(**status)
 
 
-@router.get("/jobs", response_model=Dict[str, Any])
+@router.get("/jobs", response_model=ListJobsResponse)
 async def list_tokenization_jobs(
     status: Optional[str] = Query(None, description="Filter by job status"),
     tokenizer_type: Optional[str] = Query(None, description="Filter by tokenizer type"),
@@ -158,10 +128,10 @@ async def list_tokenization_jobs(
         limit=limit,
         offset=offset
     )
-    return result
+    return ListJobsResponse(**result)
 
 
-@router.delete("/jobs/{job_id}", response_model=Dict[str, Any])
+@router.delete("/jobs/{job_id}", response_model=JobStatusResponse)
 async def cancel_tokenization_job(
     job_id: str,
     controller: TokenizationController = Depends(get_tokenization_controller)
@@ -169,11 +139,11 @@ async def cancel_tokenization_job(
     """Cancel a tokenization job"""
     cancelled = await controller.cancel_job(job_id)
     if cancelled:
-        return {"message": "Job cancelled successfully", "job_id": job_id}
+        return JobStatusResponse(**cancelled)
     raise HTTPException(status_code=400, detail="Job cannot be cancelled or not found")
 
 
-@router.get("/statistics", response_model=Dict[str, Any])
+@router.get("/statistics", response_model=StatisticsResponse)
 async def get_tokenization_statistics(
     user_id: Optional[str] = Query(None, description="Filter by user ID"),
     controller: TokenizationController = Depends(get_tokenization_controller)
@@ -181,13 +151,30 @@ async def get_tokenization_statistics(
     """Get tokenization statistics"""
     try:
         stats = await controller.get_statistics(user_id=user_id)
-        return stats
+        return StatisticsResponse(**stats)
     except Exception as e:
         logger.error(f"Failed to get tokenization statistics: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/types", response_model=List[str])
-async def get_tokenizer_types():
+@router.get("/types", response_model=ListResourcesResponse)
+async def get_tokenizer_types(
+    request: RequestBase = Field(..., description="Request model for getting tokenizer types"),
+    controller: TokenizationController = Depends(get_tokenization_controller)
+):
     """Get available tokenizer types"""
-    return ["bpe", "wordpiece", "sentencepiece"]
+
+    return ListResourcesResponse(
+        items=[
+            {"name": "BertWordPieceTokenizer", "description": "BERT WordPiece tokenizer"},
+            {"name": "GPT2BPETokenizer", "description": "GPT-2 Byte-Pair Encoding tokenizer"},
+            {"name": "SentencePieceTokenizer", "description": "SentencePiece tokenizer"},
+            {"name": "ByteLevelBPETokenizer", "description": "Byte-level BPE tokenizer"},
+            {"name": "UnigramTokenizer", "description": "Unigram tokenizer based on SentencePiece"},
+            {"name": "WordLevelTokenizer", "description": "Word-level tokenizer"},
+            {"name": "CharacterTokenizer", "description": "Character-level tokenizer"},
+            {"name": "MosesTokenizer", "description": "Moses tokenizer for NLP preprocessing"},
+            {"name": "CustomTokenizer", "description": "Custom tokenizer defined by user"}
+        ],
+        **request.dict()
+    )

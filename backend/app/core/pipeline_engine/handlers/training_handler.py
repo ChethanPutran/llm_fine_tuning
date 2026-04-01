@@ -9,9 +9,11 @@ import pandas as pd
 import logging
 
 from app.common.job_models import TrainingJob
+from app.core.datasets.factory import DatasetFactory
 from app.core.pipeline_engine.handlers.base_handler import BaseHandler
-from app.core.training.trainer import Trainer
-from app.core.training.config import TrainingConfig
+from app.core.training.pipeline import TrainingPipeline
+from app.core.training.tasks.factory import TrainingTaskFactory
+from app.core.training.config import TrainingConfig,TrainingTaskConfig
 from app.core.models.model_factory import ModelFactory
 from app.core.config import settings
 
@@ -27,54 +29,32 @@ class TrainingHandler(BaseHandler):
         await self._mark_started(job.job_id)
         
         try:
+            config = job.config
+            task_config = job.config.task
+            dataset_config = job.dataset_config
+            model_config = job.train_model_config
+
             await self._update_progress(job.job_id, 10, "Loading dataset")
             
             # Load dataset
-            df = pd.read_csv(job.dataset_path)
+            df = pd.read_csv(dataset_config.dataset_path)
             
             await self._update_progress(job.job_id, 30, "Loading model")
             
             # Get model
-            model = ModelFactory.get_model(
-                job.model_type,
-                job.model_name,
-                job.config
-            )
+            model = ModelFactory.get_model(model_config)
             
             await self._update_progress(job.job_id, 50, "Preparing data")
-            
-            # Prepare dataset
-            texts = df['text'].tolist()
-            labels = df['label'].tolist()
-            
-            # Split dataset
-            split_idx = int(len(texts) * 0.8)
-            train_dataset = TextDataset(
-                texts[:split_idx],
-                labels[:split_idx],
-                model.tokenizer,
-                job.config.get('max_length', 512)
-            )
-            eval_dataset = TextDataset(
-                texts[split_idx:],
-                labels[split_idx:],
-                model.tokenizer,
-                job.config.get('max_length', 512)
-            )
+
+            dataset = DatasetFactory.get_dataset(dataset_config.dataset_type, dataset_config)
+            task = TrainingTaskFactory.get_task(task_config)
+            pipeline = TrainingPipeline(model, task, config)
+            pipeline.setup(dataset)
             
             await self._update_progress(job.job_id, 70, "Training model")
             
-            # Create trainer
-            config = TrainingConfig()
-            for key, value in job.config.items():
-                if hasattr(config, key):
-                    setattr(config, key, value)
-            
-            trainer = Trainer(model.model, config.to_dict())
-            
-            # Train
-            results = trainer.train(train_dataset, eval_dataset)
-            
+            results = await pipeline.train()
+
             await self._update_progress(job.job_id, 90, "Saving model")
             
             # Save model
@@ -92,7 +72,7 @@ class TrainingHandler(BaseHandler):
                 "model_params": model.get_parameters()
             }
             
-            job.model_path = output_path
+            config.output_model_path = output_path
             job.metrics = result["metrics"]
             job.result = result
             

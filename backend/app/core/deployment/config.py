@@ -11,3 +11,4 @@ class DeploymentConfig(BaseModel):
     deployment_id: Optional[str] = Field(default=None)
     endpoint: Optional[str] = Field(default=None)
     status_info: Dict[str, Any] = Field(default_factory=dict)
+    

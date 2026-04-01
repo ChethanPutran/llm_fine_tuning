@@ -1,5 +1,7 @@
 # app/api/routes/pipeline.py
 
+from urllib import request
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Dict, Any, Optional
 from pydantic import BaseModel, Field
@@ -8,29 +10,15 @@ import logging
 
 from app.dependencies.controller import get_pipeline_controller
 from app.controllers.pipeline_controller import PipelineController
+from app.api.models import (ExecutePipelineRequest, CreatePipelineJobRequest, LogsResponse, RequestBase, TemplateListResponse, ValidationResponse)
+from app.api.models import ExecutionStatusResponse, JobCreationResponse, JobStatusResponse, ListJobsResponse, StartCollectionRequest, StatisticsResponse 
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/pipelines", tags=["pipelines"])
 
 
-class ExecutePipelineRequest(BaseModel):
-    """Request model for executing a pipeline"""
-    pipeline_json: Dict[str, Any] = Field(..., description="Pipeline definition in JSON format")
-    user_id: Optional[str] = Field(None, description="User ID who triggered execution")
-    priority: str = Field("NORMAL", description="Execution priority (CRITICAL, HIGH, NORMAL, LOW, BACKGROUND)")
-    auto_register: bool = Field(True, description="Whether to register the job in the system")
-
-
-class CreatePipelineJobRequest(BaseModel):
-    """Request model for creating a pipeline job"""
-    pipeline_json: Dict[str, Any] = Field(..., description="Pipeline definition in JSON format")
-    priority: str = Field("NORMAL", description="Execution priority (CRITICAL, HIGH, NORMAL, LOW, BACKGROUND)")
-    auto_execute: bool = Field(True, description="Automatically execute the job after creation")
-    tags: Optional[list[str]] = Field(None, description="Optional tags for categorization")
-
-
-@router.post("/execute", response_model=Dict[str, Any])
+@router.post("/execute", response_model=ExecutionStatusResponse)
 async def execute_pipeline(
     request: ExecutePipelineRequest,
     controller: PipelineController = Depends(get_pipeline_controller)
@@ -42,12 +30,10 @@ async def execute_pipeline(
     """
     try:
         result = await controller.execute_pipeline(
-            pipeline_json=request.pipeline_json,
             user_id=request.user_id,
-            priority=request.priority,
-            auto_register=request.auto_register
+            priority=request.priority
         )
-        return result
+        return ExecutionStatusResponse(**result)
         
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -56,7 +42,7 @@ async def execute_pipeline(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/add", response_model=Dict[str, Any])
+@router.post("/add", response_model=JobCreationResponse)
 async def create_pipeline_job(
     request: CreatePipelineJobRequest,
     controller: PipelineController = Depends(get_pipeline_controller)
@@ -70,8 +56,7 @@ async def create_pipeline_job(
     try:
         # Create the job
         result = await controller.add_job(
-            pipeline_json=request.pipeline_json,
-            priority=request.priority,
+            config=request.config,
             user_id="system",  # In real implementation, get from auth context
             tags=request.tags
         )
@@ -83,7 +68,7 @@ async def create_pipeline_job(
             result["execution_id"] = execution_result.get("execution_id")
             result["execution_status"] = "started"
         
-        return result
+        return JobCreationResponse(**result)
         
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -92,7 +77,7 @@ async def create_pipeline_job(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/execute/{job_id}", response_model=Dict[str, Any])
+@router.post("/execute/{job_id}", response_model=ExecutionStatusResponse)
 async def execute_pipeline_job(
     job_id: str,
     controller: PipelineController = Depends(get_pipeline_controller)
@@ -108,7 +93,7 @@ async def execute_pipeline_job(
         if result.get("error"):
             raise HTTPException(status_code=404, detail=result["error"])
         
-        return result
+        return ExecutionStatusResponse(**result)
         
     except HTTPException:
         raise
@@ -117,7 +102,7 @@ async def execute_pipeline_job(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/status/{job_id}", response_model=Dict[str, Any])
+@router.get("/status/{job_id}", response_model=JobStatusResponse)
 async def get_pipeline_job_status(
     job_id: str,
     controller: PipelineController = Depends(get_pipeline_controller)
@@ -130,10 +115,10 @@ async def get_pipeline_job_status(
     status = await controller.get_job_status(job_id)
     if not status:
         raise HTTPException(status_code=404, detail="Job not found")
-    return status
+    return JobStatusResponse(**status)
 
 
-@router.get("/jobs", response_model=Dict[str, Any])
+@router.get("/jobs", response_model=ListJobsResponse)
 async def list_pipeline_jobs(
     status: Optional[str] = Query(None, description="Filter by job status"),
     user_id: Optional[str] = Query(None, description="Filter by user ID"),
@@ -152,10 +137,10 @@ async def list_pipeline_jobs(
         limit=limit,
         offset=offset
     )
-    return result
+    return ListJobsResponse(**result)
 
 
-@router.delete("/jobs/{job_id}", response_model=Dict[str, Any])
+@router.delete("/jobs/{job_id}", response_model=JobStatusResponse)
 async def cancel_pipeline_job(
     job_id: str,
     controller: PipelineController = Depends(get_pipeline_controller)
@@ -167,13 +152,13 @@ async def cancel_pipeline_job(
     """
     cancelled = await controller.cancel_job(job_id)
     if cancelled:
-        return {"message": "Job cancelled successfully", "job_id": job_id}
+        return JobStatusResponse(**cancelled)
     raise HTTPException(status_code=400, detail="Job cannot be cancelled or not found")
 
 
-@router.get("/executions/{execution_id}/status", response_model=Dict[str, Any])
+@router.get("/executions/{execution_id}/status", response_model=ExecutionStatusResponse)
 async def get_execution_status(
-    execution_id: UUID,
+    execution_id: str,
     controller: PipelineController = Depends(get_pipeline_controller)
 ):
     """
@@ -184,12 +169,12 @@ async def get_execution_status(
     status = await controller.get_execution_status(execution_id)
     if "error" in status:
         raise HTTPException(status_code=404, detail=status["error"])
-    return status
+    return ExecutionStatusResponse(**status)
 
 
-@router.delete("/executions/{execution_id}", response_model=Dict[str, Any])
+@router.delete("/executions/{execution_id}", response_model=ExecutionStatusResponse)
 async def cancel_execution(
-    execution_id: UUID,
+    execution_id: str,
     controller: PipelineController = Depends(get_pipeline_controller)
 ):
     """
@@ -198,12 +183,12 @@ async def cancel_execution(
     Cancels an active pipeline execution.
     """
     result = await controller.cancel_execution(execution_id)
-    if "error" in result:
-        raise HTTPException(status_code=400, detail=result["error"])
-    return result
+    if not result:
+        raise HTTPException(status_code=400, detail="Execution cannot be cancelled or not found")
+    return ExecutionStatusResponse(**result)
 
 
-@router.get("/executions/{execution_id}/logs", response_model=Dict[str, Any])
+@router.get("/executions/{execution_id}/logs", response_model=LogsResponse)
 async def get_execution_logs(
     execution_id: UUID,
     node_id: Optional[str] = Query(None, description="Filter logs by node ID"),
@@ -218,10 +203,10 @@ async def get_execution_logs(
     result = await controller.get_execution_logs(execution_id, node_id=node_id, tail=tail)
     if "error" in result:
         raise HTTPException(status_code=404, detail=result["error"])
-    return result
+    return LogsResponse(**result)
 
 
-@router.get("/statistics", response_model=Dict[str, Any])
+@router.get("/statistics", response_model=StatisticsResponse)
 async def get_pipeline_statistics(
     user_id: Optional[str] = Query(None, description="Filter by user ID"),
     controller: PipelineController = Depends(get_pipeline_controller)
@@ -233,14 +218,15 @@ async def get_pipeline_statistics(
     """
     try:
         stats = await controller.get_statistics(user_id=user_id)
-        return stats
+        return StatisticsResponse(**stats)
     except Exception as e:
         logger.error(f"Failed to get pipeline statistics: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/templates", response_model=Dict[str, Any])
+@router.get("/templates", response_model=TemplateListResponse)
 async def get_pipeline_templates(
+    request: RequestBase = Field(..., description="Request model for pipeline templates"),
     controller: PipelineController = Depends(get_pipeline_controller)
 ):
     """
@@ -250,15 +236,19 @@ async def get_pipeline_templates(
     """
     try:
         templates = await controller.get_pipeline_templates()
-        return templates
+        return TemplateListResponse(
+            templates=templates,
+            **request.dict()
+            )
     except Exception as e:
         logger.error(f"Failed to get pipeline templates: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/templates/{template_name}", response_model=Dict[str, Any])
+@router.get("/templates/{template_name}", response_model=TemplateListResponse)
 async def get_pipeline_template(
     template_name: str,
+    request: RequestBase = Field(..., description="Request model for pipeline template"),
     controller: PipelineController = Depends(get_pipeline_controller)
 ):
     """
@@ -271,10 +261,10 @@ async def get_pipeline_template(
         if template_name not in templates:
             raise HTTPException(status_code=404, detail=f"Template '{template_name}' not found")
         
-        return {
-            "template_name": template_name,
-            "template": templates[template_name]
-        }
+        return TemplateListResponse(
+            templates={template_name: templates[template_name]},
+            **request.dict()
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -282,7 +272,7 @@ async def get_pipeline_template(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/templates/{template_name}/instantiate", response_model=Dict[str, Any])
+@router.post("/templates/{template_name}/instantiate", response_model=ExecutionStatusResponse)
 async def instantiate_template(
     template_name: str,
     config: Optional[Dict[str, Any]] = None,
@@ -295,7 +285,7 @@ async def instantiate_template(
     """
     try:
         result = await controller.instantiate_template(template_name, config=config)
-        return result
+        return ExecutionStatusResponse(**result)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -303,9 +293,10 @@ async def instantiate_template(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/validate", response_model=Dict[str, Any])
+@router.post("/validate", response_model=ValidationResponse)
 async def validate_pipeline(
     pipeline_json: Dict[str, Any],
+    request: RequestBase = Field(..., description="Request model for pipeline validation"),
     controller: PipelineController = Depends(get_pipeline_controller)
 ):
     """
@@ -314,20 +305,17 @@ async def validate_pipeline(
     Checks if a pipeline definition is valid without executing it.
     """
     try:
-        from app.core.pipeline_engine.builder import PipelineBuilder
+        await controller.validate_pipeline(pipeline_json)
         
-        # Try to build the pipeline to validate
-        pipeline = PipelineBuilder.from_dict(pipeline_json).build()
-        
-        return {
-            "valid": True,
-            "nodes": len(pipeline.nodes),
-            "edges": len(pipeline.edges),
-            "message": "Pipeline definition is valid"
-        }
+        return ValidationResponse(
+            valid=True,
+            message="Pipeline definition is valid",
+            **request.dict()
+        )
     except Exception as e:
-        return {
-            "valid": False,
-            "error": str(e),
-            "message": "Pipeline definition is invalid"
-        }
+        return ValidationResponse(
+            valid=False,
+            message="Pipeline definition is invalid",
+            error=str(e),
+            **request.dict()
+        )

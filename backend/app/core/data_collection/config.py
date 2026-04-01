@@ -33,19 +33,7 @@ class DataCollectionConfig(BaseModel):
     source: str = Field(default="web", description="Data source (web, api, database)")
     topic: str = Field(default="", description="Topic or query")
     additional_params: Dict[str, Any] = Field(default_factory=dict)
-    scraper_config: BaseConfig = Field(default=BaseConfig(), description="Configuration for the scraper to use in data collection")
+    scraper_config: BaseConfig = Field(description="Configuration for the scraper to use in data collection",
+                                       default_factory=BaseConfig)
 
-    @model_validator(mode='after')
-    def validate_logic(self) -> 'DataCollectionConfig':
-        """
-        Logic-based validation that runs after fields are assigned.
-        Self refers to the instance of the config.
-        """
-        # Scraper Config Check for Web
-        if self.source == 'web':
-            if not self.scraper_config or not isinstance(self.scraper_config, WebScraperConfig):
-                raise ValueError("Web source requires a valid WebScraperConfig")
-        elif self.source == 'books':
-            if not self.scraper_config or not isinstance(self.scraper_config, BookScraperConfig):
-                raise ValueError("Books source requires a valid BookScraperConfig")
-        return self
+    

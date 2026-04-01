@@ -3,9 +3,9 @@ import torch.nn as nn
 from typing import Dict, Any, List
 import numpy as np
 from rouge_score import rouge_scorer
-from ..base import FinetuningTask
+from .base import TrainingTask
 
-class SummarizationTask(FinetuningTask):
+class SummarizationTask(TrainingTask):
     """Text summarization task"""
     
     def __init__(self, config: Dict[str, Any]):

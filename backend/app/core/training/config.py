@@ -16,6 +16,18 @@ class SchedulerType(str, Enum):
     LINEAR = "linear"
     COSINE = "cosine"
     CONSTANT = "constant"
+class TrainingTaskType(str, Enum):
+    TEXT_CLASSIFICATION = "text_classification"
+    SEQUENCE_LABELING = "sequence_labeling"
+    QUESTION_ANSWERING = "question_answering"
+    LANGUAGE_MODELING = "language_modeling"
+    
+class TrainingTaskConfig(BaseModel):
+    """Configuration for a specific training task"""
+    task_name: str
+    parameters: Dict[str, Any] = Field(default_factory=dict)
+
+
 
 @dataclass
 class TrainingParameters:
@@ -115,4 +127,5 @@ class TrainingConfig(BaseModel):
     max_length: int = Field(default=512, ge=128, le=4096, description="Maximum sequence length for training")
     additional_params: TrainingParameters = Field(default_factory=TrainingParameters, description="Additional parameters for training")
     output_model_path: Optional[str] = None
+    task: TrainingTaskConfig = Field(default_factory=lambda: TrainingTaskConfig(task_name="text_classification"), description="Configuration for the training task")
     

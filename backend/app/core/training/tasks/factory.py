@@ -1,14 +1,14 @@
 from typing import Dict, Any
 
-from ..base import FinetuningTask
+from .base import TrainingTask
 from .classification import ClassificationTask
 from .summarization import SummarizationTask
 from .qa import QATask
 from .generation import GenerationTask
-from ..config import FinetuningConfig
+from ..config import TrainingTaskConfig
 
-class FinetuningTaskFactory:
-    """Factory pattern for creating finetuning tasks"""
+class TrainingTaskFactory:
+    """Factory pattern for creating training tasks"""
 
     _tasks = {
         'classification': ClassificationTask,
@@ -18,16 +18,16 @@ class FinetuningTaskFactory:
     }
 
     @classmethod
-    def get_task(cls, task_type: str, config: FinetuningConfig) -> FinetuningTask:
-        """Get finetuning task instance by type"""
-        task_class = cls._tasks.get(task_type)
+    def get_task(cls, config: TrainingTaskConfig) -> TrainingTask:
+        """Get training task instance by type"""
+        task_class = cls._tasks.get(config.task_name)
         if not task_class:
-            raise ValueError(f"Unknown finetuning task type: {task_type}")
+            raise ValueError(f"Unknown training task type: {config.task_name}")
         return task_class(config)
 
     @classmethod
     def register_task(cls, name: str, task_class):
-        """Register new finetuning task type"""
+        """Register new training task type"""
         cls._tasks[name] = task_class
         
     

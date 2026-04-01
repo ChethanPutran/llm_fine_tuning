@@ -2,40 +2,20 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Dict, Any, List, Optional
-from pydantic import BaseModel, Field
 import logging
 
 from app.dependencies.controller import get_training_controller
 from app.controllers.training_controller import TrainingController
+from app.api.models import LogsResponse, StartTrainingRequest
+from app.api.models import ListResourcesResponse, MetricResponse, RequestBase, StartOptimizationRequest, ExecutionStatusResponse, JobCreationResponse, JobStatusResponse, ListJobsResponse, StartCollectionRequest, StatisticsResponse 
+
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/training", tags=["training"])
 
 
-class StartTrainingRequest(BaseModel):
-    """Request model for starting training"""
-    model_type: str = Field(..., description="Type of model (bert, gpt, etc.)")
-    model_name: str = Field(..., description="Model name/identifier")
-    dataset_path: str = Field(..., description="Path to training dataset")
-    config: Dict[str, Any] = Field(default_factory=dict, description="Training configuration")
-    auto_execute: bool = Field(True, description="Automatically execute the job after creation")
-    tags: Optional[List[str]] = Field(None, description="Optional tags for categorization")
-
-
-class StartFinetuningRequest(BaseModel):
-    """Request model for starting fine-tuning"""
-    model_type: str = Field(..., description="Type of model")
-    model_name: str = Field(..., description="Model name/identifier")
-    strategy_type: str = Field(..., description="Fine-tuning strategy (lora, full, etc.)")
-    task_type: str = Field(..., description="Task type (classification, generation, etc.)")
-    dataset_path: str = Field(..., description="Path to dataset")
-    config: Dict[str, Any] = Field(default_factory=dict, description="Fine-tuning configuration")
-    auto_execute: bool = Field(True, description="Automatically execute the job after creation")
-    tags: Optional[List[str]] = Field(None, description="Optional tags for categorization")
-
-
-@router.post("/add", response_model=Dict[str, Any])
+@router.post("/add", response_model=JobCreationResponse)
 async def create_training_job(
     request: StartTrainingRequest,
     controller: TrainingController = Depends(get_training_controller)
@@ -44,22 +24,13 @@ async def create_training_job(
     try:
         # Create the job
         result = await controller.add_job(
-            model_type=request.model_type,
-            model_name=request.model_name,
-            dataset_path=request.dataset_path,
             config=request.config,
-            user_id="system",  # In real implementation, get from auth context
+            model_config=request.train_model_config,
+            dataset_config=request.dataset_config,
+            user_id=request.user_id,  # In real implementation, get from auth context
             tags=request.tags
         )
-        
-        # Auto-execute if requested
-        if request.auto_execute and result.get("job_id"):
-            job_id = result["job_id"]
-            execution_result = await controller.execute_job(job_id)
-            result["execution_id"] = execution_result.get("execution_id")
-            result["execution_status"] = "started"
-        
-        return result
+        return JobCreationResponse(**result)
         
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -68,42 +39,8 @@ async def create_training_job(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/finetune", response_model=Dict[str, Any])
-async def create_finetuning_job(
-    request: StartFinetuningRequest,
-    controller: TrainingController = Depends(get_training_controller)
-):
-    """Create a fine-tuning job"""
-    try:
-        # Create the job
-        result = await controller.add_finetuning_job(
-            base_model_type=request.model_type,
-            base_model_name=request.model_name,
-            strategy_type=request.strategy_type,
-            task_type=request.task_type,
-            dataset_path=request.dataset_path,
-            config=request.config,
-            user_id="system",  # In real implementation, get from auth context
-            tags=request.tags
-        )
-        
-        # Auto-execute if requested
-        if request.auto_execute and result.get("job_id"):
-            job_id = result["job_id"]
-            execution_result = await controller.execute_job(job_id)
-            result["execution_id"] = execution_result.get("execution_id")
-            result["execution_status"] = "started"
-        
-        return result
-        
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Failed to create fine-tuning job: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
-
-@router.post("/execute/{job_id}", response_model=Dict[str, Any])
+@router.post("/execute/{job_id}", response_model=ExecutionStatusResponse)
 async def execute_training_job(
     job_id: str,
     controller: TrainingController = Depends(get_training_controller)
@@ -115,7 +52,7 @@ async def execute_training_job(
         if result.get("error"):
             raise HTTPException(status_code=404, detail=result["error"])
         
-        return result
+        return ExecutionStatusResponse(**result)
         
     except HTTPException:
         raise
@@ -124,7 +61,7 @@ async def execute_training_job(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/status/{job_id}", response_model=Dict[str, Any])
+@router.get("/status/{job_id}", response_model=JobStatusResponse)
 async def get_training_status(
     job_id: str,
     controller: TrainingController = Depends(get_training_controller)
@@ -133,10 +70,10 @@ async def get_training_status(
     status = await controller.get_job_status(job_id)
     if not status:
         raise HTTPException(status_code=404, detail="Job not found")
-    return status
+    return JobStatusResponse(**status)
 
 
-@router.get("/jobs", response_model=Dict[str, Any])
+@router.get("/jobs", response_model=ListJobsResponse)
 async def list_training_jobs(
     status: Optional[str] = Query(None, description="Filter by job status"),
     job_type: Optional[str] = Query(None, description="Filter by job type (training/finetuning)"),
@@ -153,10 +90,10 @@ async def list_training_jobs(
         limit=limit,
         offset=offset
     )
-    return result
+    return ListJobsResponse(**result)
 
 
-@router.delete("/jobs/{job_id}", response_model=Dict[str, Any])
+@router.delete("/jobs/{job_id}", response_model=JobStatusResponse)
 async def cancel_training_job(
     job_id: str,
     controller: TrainingController = Depends(get_training_controller)
@@ -164,11 +101,11 @@ async def cancel_training_job(
     """Cancel a training job"""
     cancelled = await controller.cancel_job(job_id)
     if cancelled:
-        return {"message": "Job cancelled successfully", "job_id": job_id}
+        return JobStatusResponse(**cancelled)
     raise HTTPException(status_code=400, detail="Job cannot be cancelled or not found")
 
 
-@router.get("/statistics", response_model=Dict[str, Any])
+@router.get("/statistics", response_model=StatisticsResponse)
 async def get_training_statistics(
     user_id: Optional[str] = Query(None, description="Filter by user ID"),
     controller: TrainingController = Depends(get_training_controller)
@@ -176,13 +113,13 @@ async def get_training_statistics(
     """Get training statistics"""
     try:
         stats = await controller.get_statistics(user_id=user_id)
-        return stats
+        return StatisticsResponse(**stats)
     except Exception as e:
         logger.error(f"Failed to get training statistics: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/metrics/{job_id}", response_model=Dict[str, Any])
+@router.get("/metrics/{job_id}", response_model=MetricResponse)
 async def get_training_metrics(
     job_id: str,
     controller: TrainingController = Depends(get_training_controller)
@@ -191,10 +128,10 @@ async def get_training_metrics(
     metrics = await controller.get_job_metrics(job_id)
     if not metrics:
         raise HTTPException(status_code=404, detail="Job not found")
-    return metrics
+    return MetricResponse(**metrics)
 
 
-@router.get("/logs/{job_id}", response_model=Dict[str, Any])
+@router.get("/logs/{job_id}", response_model=LogsResponse)
 async def get_training_logs(
     job_id: str,
     tail: int = Query(100, ge=1, le=1000, description="Number of lines to return"),
@@ -209,37 +146,69 @@ async def get_training_logs(
     if isinstance(logs, list) and len(logs) > tail:
         logs = logs[-tail:]
     
-    return {"job_id": job_id, "logs": logs, "tail": tail}
+    return LogsResponse(job_id=job_id, logs=logs, tail=tail)
 
 
-@router.get("/strategies", response_model=List[str])
-async def get_strategies():
+@router.get("/strategies", response_model=ListResourcesResponse)
+async def get_strategies(
+    request: RequestBase = Depends(),
+):
     """Get available fine-tuning strategies"""
-    return ["full_finetune", "lora", "adapter", "prefix_tuning"]
+    return ListResourcesResponse(
+        items=[
+            {"name": "full_finetune", "description": "Full fine-tuning strategy"},
+            {"name": "lora", "description": "Low-Rank Adaptation strategy"},
+            {"name": "adapter", "description": "Adapter strategy"},
+            {"name": "prefix_tuning", "description": "Prefix tuning strategy"}
+        ],**request.dict()
+    )
 
 
-@router.get("/tasks", response_model=List[str])
-async def get_tasks():
+@router.get("/tasks", response_model=ListResourcesResponse)
+async def get_tasks(
+    request: RequestBase = Depends(),
+):
     """Get available fine-tuning tasks"""
-    return ["classification", "summarization", "qa", "generation"]
+    return ListResourcesResponse(
+        items=[
+            {"name": "classification", "description": "Classification task"},
+            {"name": "summarization", "description": "Summarization task"},
+            {"name": "qa", "description": "Question Answering task"},
+            {"name": "generation", "description": "Text Generation task"}
+        ],**request.dict()
+    )
 
 
-@router.get("/configs", response_model=Dict[str, Any])
-async def get_training_configs():
+@router.get("/configs", response_model=ListResourcesResponse)
+async def get_training_configs(
+    request: RequestBase = Depends(),
+):
     """Get available training configurations"""
-    return {
-        "default": {
-            "learning_rate": 2e-5,
-            "batch_size": 32,
-            "epochs": 3,
-            "warmup_steps": 500,
-            "weight_decay": 0.01
-        },
-        "finetuning": {
-            "learning_rate": 5e-5,
-            "batch_size": 16,
-            "epochs": 5,
-            "warmup_ratio": 0.1,
-            "gradient_accumulation_steps": 2
-        }
-    }
+    return ListResourcesResponse(
+        items=[
+            {
+                "name": "default_training",
+                "description": "Default training configuration",
+                "parameters": {
+                    "learning_rate": 3e-5,
+                    "batch_size": 32,
+                    "epochs": 3,
+                    "warmup_steps": 500,
+                    "weight_decay": 0.01
+                }
+            },
+            {
+                "name": "default_finetuning",
+                "description": "Default fine-tuning configuration",
+                "parameters": {
+                    "learning_rate": 5e-5,
+                    "batch_size": 16,
+                    "epochs": 5,
+                    "warmup_ratio": 0.1,
+                    "gradient_accumulation_steps": 2
+                }
+            }   
+        ],
+        **request.dict()
+    )
+         

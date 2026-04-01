@@ -34,7 +34,7 @@ class Trainer:
         mlflow.set_tracking_uri(config.additional_params.mlflow_uri)
 
         
-    def train(self, train_dataset, eval_dataset=None) -> Dict[str, Any]:
+    async def train(self, train_dataset, eval_dataset=None) -> Dict[str, Any]:
         """Train the model"""
         train_loader = DataLoader(
             train_dataset,

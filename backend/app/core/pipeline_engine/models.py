@@ -1,114 +1,49 @@
 from enum import Enum
 from typing import Dict, List, Any, Optional
-from dataclasses import dataclass, field
 from datetime import datetime
 from uuid import UUID, uuid4
+from pydantic import BaseModel, Field
+from app.common.node_models import NodeType, NodeStatus
 
-class NodeType(Enum):
-    DATA_INGESTION = "data_ingestion"
-    DATA_PROCESSING = "data_processing"
-    MODEL_TRAINING = "model_training"
-    MODEL_FINETUNING = "model_finetuning"
-    TOKENIZATION = "tokenization"
-    MODEL_EVALUATION = "model_evaluation"
-    MODEL_DEPLOYMENT = "model_deployment"
-    OPTIMIZATION = "optimization"
-    CUSTOM = "custom"
-
-class NodeStatus(Enum):
-    PENDING = "pending"
-    RUNNING = "running"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    SKIPPED = "skipped"
-    RETRYING = "retrying"
-
-class ExecutionStatus(Enum):
-    CREATED = "created"
-    VALIDATING = "validating"
-    SCHEDULED = "scheduled"
-    RUNNING = "running"
-    PAUSED = "paused"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
-
-class ExecutionEvent(Enum):
-    NODE_STARTED = "node_started"
-    NODE_COMPLETED = "node_completed"
-    NODE_FAILED = "node_failed"
-    NODE_RETRYING = "node_retrying"
-    PIPELINE_STARTED = "pipeline_started"
-    PIPELINE_COMPLETED = "pipeline_completed"
-    PIPELINE_FAILED = "pipeline_failed"
-    DEPLOYMENT_STARTED = "deployment_started"
-    DEPLOYMENT_COMPLETED = "deployment_completed"
-    DATA_INGESTION_COMPLETED = "data_ingestion_completed"
-    DATA_INGESTION_FAILED = "data_ingestion_failed"
-    DATA_PROCESSING_COMPLETED = "data_processing_completed"
-    DATA_PROCESSING_FAILED = "data_processing_failed"
-    MODEL_TRAINING_COMPLETED = "model_training_completed"
-    MODEL_TRAINING_FAILED = "model_training_failed"
-    MODEL_EVALUATION_COMPLETED = "model_evaluation_completed"
-    MODEL_EVALUATION_FAILED = "model_evaluation_failed"
-    MODEL_DEPLOYMENT_COMPLETED = "model_deployment_completed"
-    MODEL_DEPLOYMENT_FAILED = "model_deployment_failed"
-
-
-
-@dataclass
-class NodeConfig:
+class NodeConfig(BaseModel):
     """Configuration for a pipeline node"""
-    parameters: Dict[str, Any] = field(default_factory=dict)
-    resources: Dict[str, Any] = field(default_factory=lambda: {"cpu": 1, "memory": "2Gi"})
-    retry_policy: Dict[str, Any] = field(default_factory=lambda: {"max_retries": 3, "delay": 5})
+    parameters: Dict[str, Any] = Field(default_factory=dict, description="Parameters for the node execution")
+    resources: Dict[str, Any] = Field(default_factory=lambda: {"cpu": 1, "memory": "2Gi"}, description="Resources required for the node execution")
+    retry_policy: Dict[str, Any] = Field(default_factory=lambda: {"max_retries": 3, "delay": 5}, description="Retry policy for the node execution")
 
-@dataclass
-class PipelineNode:
+
+class PipelineNode(BaseModel):
     """Represents a node in the pipeline DAG"""
-    id: str
-    name: str
-    type: NodeType
-    config: NodeConfig
-    status: NodeStatus = NodeStatus.PENDING
-    start_time: Optional[datetime] = None
-    end_time: Optional[datetime] = None
-    error: Optional[str] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    job: Optional[Any] = None  # Reference to the actual job object, if applicable
+    id: str = Field(default_factory=lambda: str(uuid4()), description="Unique identifier for the node")
+    name: str = Field(default="Unnamed Node", description="Human-readable name for the node")
+    type: NodeType  = Field(description="Type of the node (e.g., data_ingestion, model_training)")
+    config: NodeConfig = Field(default_factory=NodeConfig, description="Configuration for the node")
+    status: NodeStatus = Field(default=NodeStatus.PENDING, description="Current status of the node")
+    start_time: Optional[datetime] = Field(default=None, description="Start time of the node execution")
+    end_time: Optional[datetime] = Field(default=None, description="End time of the node execution")
+    error: Optional[str] = Field(default=None, description="Error message if the node failed")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata for the node")
+    job: Optional[Any] = Field(default=None, description="Reference to the job associated with this node, if any")
     
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "id": self.id,
-            "name": self.name,
-            "type": self.type.value,
-            "config": self.config.parameters,
-            "status": self.status.value,
-            "start_time": self.start_time.isoformat() if self.start_time else None,
-            "end_time": self.end_time.isoformat() if self.end_time else None,
-            "error": self.error,
-            "metadata": self.metadata
-        }
+  
 
-@dataclass
-class PipelineEdge:
+class PipelineEdge(BaseModel):
     """Represents a dependency between nodes"""
-    source: str
-    target: str
-    condition: Optional[str] = None  # Optional condition for conditional execution
+    source: str = Field(description="ID of the source node")
+    target: str = Field(description="ID of the target node")
+    condition: Optional[str] = Field(default=None, description="Condition for this edge to be followed (e.g., 'on_success', 'on_failure')")
 
-@dataclass
-class Pipeline:
+class Pipeline(BaseModel):
     """Main pipeline model"""
-    id: UUID = field(default_factory=uuid4)
-    name: str = "Unnamed Pipeline"
-    description: Optional[str] = None
-    nodes: Dict[str, PipelineNode] = field(default_factory=dict)
-    edges: List[PipelineEdge] = field(default_factory=list)
+    id: UUID = Field(default_factory=uuid4)
+    name: str = Field(default="Unnamed Pipeline")
+    description: Optional[str] = Field(default=None)
+    nodes: Dict[str, PipelineNode] = Field(default_factory=dict)
+    edges: List[PipelineEdge] = Field(default_factory=list)
     version: int = 1
-    created_at: datetime = field(default_factory=datetime.utcnow)
-    updated_at: datetime = field(default_factory=datetime.utcnow)
-    tags: List[str] = field(default_factory=list)
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
+    tags: List[str] = Field(default_factory=list)
     
     def add_node(self, node: PipelineNode) -> None:
         self.nodes[node.id] = node
@@ -124,64 +59,51 @@ class Pipeline:
         """Get all nodes that depend on this node"""
         return [edge.target for edge in self.edges if edge.source == node_id]
     
+    @staticmethod
+    def from_dict( data: Dict[str, Any]) -> 'Pipeline':
+        """Create a Pipeline instance from a dictionary"""
+        nodes = {node_data['id']: PipelineNode(**node_data) for node_data in data.get('nodes', [])}
+        edges = [PipelineEdge(**edge_data) for edge_data in data.get('edges', [])]
+        return Pipeline(
+            id=data.get('id', uuid4()),
+            name=data.get('name', "Unnamed Pipeline"),
+            description=data.get('description'),
+            nodes=nodes,
+            edges=edges,
+            version=data.get('version', 1),
+            created_at=data.get('created_at', datetime.now()),
+            updated_at=data.get('updated_at', datetime.now()),
+            tags=data.get('tags', [])
+        )
 
-@dataclass
-class SchedulingContext:
+class SchedulingContext(BaseModel):
     """Context object for scheduling decisions"""
-    pipeline: Pipeline
-    completed_nodes: List[str]
-    failed_nodes: List[str]
-    running_nodes: List[str]
-    resource_availability: Dict[str, int]
-    node_results: Dict[str, Any]
+    pipeline: Pipeline = Field(description="The pipeline being scheduled")
+    completed_nodes: List[str] = Field(default_factory=list)
+    failed_nodes: List[str]     = Field(default_factory=list)
+    running_nodes: List[str] = Field(default_factory=list)
+    resource_availability: Dict[str, int] = Field(default_factory=dict, description="Current resource availability in the system")
+    node_results: Dict[str, Any] = Field(default_factory=dict, description="Results from completed nodes that may be needed for scheduling decisions")
+    execution_history: List[Dict[str, Any]] = Field(default_factory=list, description="History of execution events for this pipeline run")
     
-@dataclass
-class NodePosition:
-    """Position of a node in the UI graph"""
-    x: float = 0.0
-    y: float = 0.0
-    
-    def to_dict(self) -> Dict[str, float]:
-        return {"x": self.x, "y": self.y}
 
-@dataclass
-class VisualNode:
+class NodePosition(BaseModel):
+    """Position of a node in the UI graph"""
+    x: float = Field(default=0.0)
+    y: float = Field(default=0.0)
+    
+    
+class VisualNode(BaseModel):
     """Node with visual properties for UI rendering"""
     node: PipelineNode
-    position: NodePosition = field(default_factory=NodePosition)
-    style: Dict[str, Any] = field(default_factory=dict)
-    selected: bool = False
-    collapsed: bool = False
+    position: NodePosition = Field(default_factory=NodePosition)
+    style: Dict[str, Any] = Field(default_factory=dict)
+    selected: bool = Field(default=False)
+    collapsed: bool = Field(default=False)
     
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "id": self.node.id,
-            "name": self.node.name,
-            "type": self.node.type.value,
-            "position": self.position.to_dict(),
-            "style": self.style,
-            "selected": self.selected,
-            "collapsed": self.collapsed,
-            "status": self.node.status.value,
-            "config": self.node.config.parameters,
-            "metadata": self.node.metadata
-        }
-
-
-@dataclass
-class VisualEdge:
+class VisualEdge(BaseModel):
     """Edge with visual properties for UI rendering"""
     edge: PipelineEdge
-    style: Dict[str, Any] = field(default_factory=dict)
-    label: Optional[str] = None
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "id": f"{self.edge.source}_{self.edge.target}",
-            "source": self.edge.source,
-            "target": self.edge.target,
-            "condition": self.edge.condition,
-            "style": self.style,
-            "label": self.label
-        }
+    style: Dict[str, Any] = Field(default_factory=dict)
+    label: Optional[str] = Field(default=None)
 

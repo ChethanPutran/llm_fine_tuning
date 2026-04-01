@@ -12,19 +12,12 @@ from app.core.config import settings
 from app.common.job_models import PreprocessingConfig
 from app.dependencies.controller import get_preprocessing_controller
 from app.controllers.preprocessing_controller import PreprocessingController
+from app.api.models import StartPreprocessingRequest
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/preprocessing", tags=["preprocessing"])
 
-
-class StartPreprocessingRequest(BaseModel):
-    """Request model for starting preprocessing"""
-    input_path: str = Field(..., description="Path to input data")
-    output_path: Optional[str] = Field(None, description="Output path (optional)")
-    config: PreprocessingConfig = Field(..., description="Preprocessing configuration")
-    auto_execute: bool = Field(True, description="Automatically execute the job after creation")
-    tags: Optional[List[str]] = Field(None, description="Optional tags for categorization")
 
 
 @router.post("/add", response_model=Dict[str, Any])
@@ -36,20 +29,10 @@ async def create_preprocessing_job(
     try:
         # Create the job
         result = await controller.add_job(
-            input_path=request.input_path,
             config=request.config,
-            output_path=request.output_path,
-            user_id="system",  # In real implementation, get from auth context
+            user_id="system", 
             tags=request.tags
         )
-        
-        # Auto-execute if requested
-        if request.auto_execute and result.get("job_id"):
-            job_id = result["job_id"]
-            execution_result = await controller.execute_job(job_id)
-            result["execution_id"] = execution_result.get("execution_id")
-            result["execution_status"] = "started"
-        
         return result
         
     except ValueError as e:

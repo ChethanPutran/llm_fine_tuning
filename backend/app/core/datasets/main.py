@@ -1,15 +1,18 @@
+from abc import abstractmethod
+
 from app.core.config import settings
 from datetime import datetime
 import pandas as pd
 import os
 import torch
 from torch.utils.data import Dataset, DataLoader
+from .base import BaseDataset
 
-
-class TextDataset(Dataset):
+class TextDataset(BaseDataset):
     """Simple text dataset for training"""
     
     def __init__(self, texts, labels, tokenizer, max_length=512):
+        super().__init__(config=None)
         self.texts = texts
         self.labels = labels
         self.tokenizer = tokenizer
@@ -35,6 +38,7 @@ class TextDataset(Dataset):
             'attention_mask': encoding['attention_mask'].squeeze(),
             'labels': torch.tensor(label)
         }
+
 
 
 class Datasets:
@@ -80,6 +84,24 @@ class Datasets:
                 tuning_config.max_length
             )
         else:
+             # Prepare dataset
+            texts = df['text'].tolist()
+            labels = df['label'].tolist()
+            
+            # Split dataset
+            split_idx = int(len(texts) * 0.8)
+            train_dataset = TextDataset(
+                texts[:split_idx],
+                labels[:split_idx],
+                model.tokenizer,
+                job.config.get('max_length', 512)
+            )
+            eval_dataset = TextDataset(
+                texts[split_idx:],
+                labels[split_idx:],
+                model.tokenizer,
+                job.config.get('max_length', 512)
+            )
             # For other tasks, implement similar dataset preparation
             train_dataset = None
             eval_dataset = None

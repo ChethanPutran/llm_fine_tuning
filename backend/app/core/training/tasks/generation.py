@@ -2,9 +2,9 @@ import torch
 import torch.nn as nn
 from typing import Dict, Any, List
 import numpy as np
-from ..base import FinetuningTask
+from .base import TrainingTask
 
-class GenerationTask(FinetuningTask):
+class GenerationTask(TrainingTask):
     """Text generation task"""
     
     def __init__(self, config: Dict[str, Any]):

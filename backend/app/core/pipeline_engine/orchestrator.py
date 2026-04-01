@@ -8,9 +8,10 @@ from datetime import datetime, timezone
 
 # Import all components
 from app.core.pipeline_engine.builder import PipelineBuilder
+from app.common.enums import ExecutionEvent, NodeType
 from app.core.pipeline_engine.retry_handler import RetryHandler
-from app.core.pipeline_engine.models import Pipeline, NodeType
-from app.core.pipeline_engine.executor import PipelineExecutor, ExecutionEvent
+from app.core.pipeline_engine.models import Pipeline
+from app.core.pipeline_engine.executor import PipelineExecutor
 from app.core.pipeline_engine.scheduler import PipelineScheduler, PriorityScheduler
 from app.core.pipeline_engine.dag_validator import DAGValidator
 from app.core.pipeline_engine.state_manager import PipelineStateManager, RedisStateStorage
@@ -92,7 +93,7 @@ class PipelineOrchestrator:
     
     def get_active_jobs(self) -> List[Dict[str, Any]]:
         """Get list of active jobs"""
-        return [self._job_to_dict(job) for job in self.active_jobs.values()]
+        return [job.model_dump() for job in self.active_jobs.values()]
     
     async def get_queued_jobs(self) -> List[Dict[str, Any]]:
         """Get list of queued jobs"""
@@ -112,13 +113,13 @@ class PipelineOrchestrator:
         
         # Create handler instances (pass orchestrator reference)
         self.handlers = {
-            "data_ingestion": DataCollectionHandler(self),
-            "data_processing": PreprocessingHandler(self),
-            "training": TrainingHandler(self),
-            "finetuning": FinetuningHandler(self),
-            "optimization": OptimizationHandler(self),
-            "deployment": DeploymentHandler(self),
-            "tokenization": TokenizationHandler(self),
+            "data_ingestion": DataCollectionHandler(),
+            "data_processing": PreprocessingHandler(),
+            "training": TrainingHandler(),
+            "finetuning": FinetuningHandler(),
+            "optimization": OptimizationHandler(),
+            "deployment": DeploymentHandler(),
+            "tokenization": TokenizationHandler(),
         }
         
         # Register handlers with workers
@@ -128,7 +129,14 @@ class PipelineOrchestrator:
         
         logger.info(f"Registered {len(self.handlers)} job handlers")
 
-
+    async def validate_pipeline(self, pipeline_json: Dict[str, Any]) -> bool:
+        """Validate a pipeline definition without executing it"""
+        validator = await DAGValidator.from_dict(pipeline_json)
+        is_valid, errors = await validator.validate()
+        if not is_valid:
+            raise ValueError(f"Invalid pipeline definition: {errors}")
+        return is_valid
+        
     def _setup_event_handlers(self):
         """Setup pipeline event handlers using decorator pattern"""
         
@@ -330,6 +338,25 @@ class PipelineOrchestrator:
         logger.info(f"Job {job.job_id} registered with type {job.job_type.value}")
         return job.job_id
     
+    async def cancel_job(self, job_id: UUID) -> bool:
+        """Cancel a job by ID"""
+        job = self._jobs.get(job_id)
+        if not job:
+            logger.error(f"Job {job_id} not found for cancellation")
+            return False
+        # Cancel execution if running
+        if job.execution_id:
+            await self.cancel_execution(job.execution_id)
+
+        job.mark_removed()
+        del self._jobs[job_id]
+        await manager.notify_job_update(str(job_id), {
+            "status": "removed",
+            "message": "Job removed by user"
+        })
+        return True
+
+
     def get_job(self, job_id: UUID) -> Optional[BaseJob]:
         """Get job by ID"""
         return self._jobs.get(job_id)
@@ -376,51 +403,8 @@ class PipelineOrchestrator:
             "total": total,
             "limit": limit,
             "offset": offset,
-            "jobs": [self._job_to_dict(job) for job in paginated_jobs]
+            "jobs": [job.model_dump() for job in paginated_jobs]
         }
-    
-    def _job_to_dict(self, job: Any) -> Dict[str, Any]:
-        """Convert job to dictionary for listing"""
-        from app.common.job_models import (
-            DataCollectionJob, TrainingJob, FinetuningJob, DeploymentJob
-        )
-        
-        base_dict = {
-            "job_id": str(job.job_id),
-            "job_type": job.job_type.value,
-            "status": job.status.value,
-            "progress": job.progress,
-            "created_at": job.created_at.isoformat(),
-            "started_at": job.started_at.isoformat() if job.started_at else None,
-            "completed_at": job.completed_at.isoformat() if job.completed_at else None,
-            "user_id": job.user_id,
-            "tags": job.tags
-        }
-        
-        # Add type-specific fields
-        if isinstance(job, DataCollectionJob):
-            base_dict.update({
-                "source": job.source,
-                "topic": job.topic,
-                "documents_count": len(job.documents) if job.documents else 0
-            })
-        elif isinstance(job, TrainingJob):
-            base_dict.update({
-                "model_name": job.model_name,
-                "model_type": job.model_type
-            })
-        elif isinstance(job, FinetuningJob):
-            base_dict.update({
-                "base_model_name": job.base_model_name,
-                "strategy_type": job.strategy_type
-            })
-        elif isinstance(job, DeploymentJob):
-            base_dict.update({
-                "serving_framework": job.serving_framework,
-                "endpoint": job.endpoint
-            })
-        
-        return base_dict
     
     # ==================== Pipeline Builder Operations ====================
     
@@ -490,9 +474,9 @@ class PipelineOrchestrator:
     ) -> Dict[str, Any]:
         """Execute the current pipeline built by the user"""
         pipeline = self.pipeline_builder.build()
-        return await self.execute_pipeline(pipeline, user_id, priority)
+        return await self._execute_pipeline(pipeline, user_id, priority)
     
-    async def execute_pipeline(
+    async def _execute_pipeline(
         self,
         pipeline: Pipeline,
         user_id: Optional[str] = None,
@@ -637,7 +621,8 @@ class PipelineOrchestrator:
                         if hasattr(job, 'execution_id') and job.execution_id == execution_id:
                             job.mark_cancelled()
                             await manager.notify_job_update(str(job_id), {
-                                "status": "cancelled"
+                                "status": "cancelled",
+                                "message": "Execution cancelled by user"
                             })
                             break
                     
