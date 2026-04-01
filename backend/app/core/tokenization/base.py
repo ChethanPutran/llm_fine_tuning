@@ -2,12 +2,14 @@ from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional, Union
 import numpy as np
 
+from app.core.tokenization.config import TokenizationConfig
+
 class BaseTokenizer(ABC):
     """Abstract base class for tokenizers"""
     
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: TokenizationConfig):
         self.config = config
-        self.vocab_size = config.get('vocab_size', 50000)
+        self.vocab_size = config.vocab_size
         self.vocab = {}
         self.inverse_vocab = {}
     

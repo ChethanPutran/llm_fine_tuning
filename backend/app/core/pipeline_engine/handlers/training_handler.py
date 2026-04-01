@@ -6,49 +6,16 @@ Handler for training jobs
 
 from typing import Dict, Any
 import pandas as pd
-import torch
-from torch.utils.data import Dataset, DataLoader
 import logging
 
 from app.common.job_models import TrainingJob
 from app.core.pipeline_engine.handlers.base_handler import BaseHandler
 from app.core.training.trainer import Trainer
-from app.core.training.configs import TrainingConfig
+from app.core.training.config import TrainingConfig
 from app.core.models.model_factory import ModelFactory
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
-
-
-class TextDataset(Dataset):
-    """Simple text dataset for training"""
-    
-    def __init__(self, texts, labels, tokenizer, max_length=512):
-        self.texts = texts
-        self.labels = labels
-        self.tokenizer = tokenizer
-        self.max_length = max_length
-    
-    def __len__(self):
-        return len(self.texts)
-    
-    def __getitem__(self, idx):
-        text = self.texts[idx]
-        label = self.labels[idx]
-        
-        encoding = self.tokenizer(
-            text,
-            truncation=True,
-            padding='max_length',
-            max_length=self.max_length,
-            return_tensors='pt'
-        )
-        
-        return {
-            'input_ids': encoding['input_ids'].squeeze(),
-            'attention_mask': encoding['attention_mask'].squeeze(),
-            'labels': torch.tensor(label)
-        }
 
 
 class TrainingHandler(BaseHandler):

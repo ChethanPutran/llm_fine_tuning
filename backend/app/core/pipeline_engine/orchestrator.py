@@ -16,8 +16,8 @@ from app.core.pipeline_engine.dag_validator import DAGValidator
 from app.core.pipeline_engine.state_manager import PipelineStateManager, RedisStateStorage
 from app.core.execution.resource_manager import ResourceManager
 from app.core.execution.async_executor import AsyncExecutor
+from app.common.job_models import JobPriority, BaseJob
 from app.api.websocket import manager
-from app.common.job_models import JobPriority
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ class PipelineOrchestrator:
         self.state_manager = PipelineStateManager(self.redis)
         self.scheduler = PipelineScheduler(PriorityScheduler())
         self.resource_manager = ResourceManager()
-        self.retry_handler = RetryHandler()  # Use existing RetryHandler
+        self.retry_handler = RetryHandler() 
         
         # Global pipeline builder - users add nodes to this
         self.pipeline_builder = PipelineBuilder()
@@ -78,7 +78,8 @@ class PipelineOrchestrator:
         
         # Track state
         self.active_executions: Dict[UUID, ExecutionContext] = {}
-        self._jobs: Dict[UUID, Any] = {}  # All job types
+        self._jobs: Dict[UUID, BaseJob] = {}  # All job types
+        self.active_jobs: Dict[UUID, BaseJob] = {}  # Track active jobs separately
         
         # WebSocket connections
         self.websocket_connections: List[Any] = []
@@ -89,6 +90,14 @@ class PipelineOrchestrator:
         # Setup event handlers
         self._setup_event_handlers()
     
+    def get_active_jobs(self) -> List[Dict[str, Any]]:
+        """Get list of active jobs"""
+        return [self._job_to_dict(job) for job in self.active_jobs.values()]
+    
+    async def get_queued_jobs(self) -> List[Dict[str, Any]]:
+        """Get list of queued jobs"""
+        return await self.async_executor.get_queued_jobs()
+
     def _register_all_handlers(self):
         """Register handlers for all job types"""
         
@@ -295,7 +304,7 @@ class PipelineOrchestrator:
         # asyncio.create_task(self.execute_pipeline(pipeline, user_id=job.user_id, priority=job.priority))
 
 
-    def register_job(self, job: Any, metadata: Dict[str, Any]) -> UUID:
+    def register_job(self, job: BaseJob, metadata: Dict[str, Any]) -> UUID:
         """
         Register a job in the orchestrator
         
@@ -321,7 +330,7 @@ class PipelineOrchestrator:
         logger.info(f"Job {job.job_id} registered with type {job.job_type.value}")
         return job.job_id
     
-    def get_job(self, job_id: UUID) -> Optional[Any]:
+    def get_job(self, job_id: UUID) -> Optional[BaseJob]:
         """Get job by ID"""
         return self._jobs.get(job_id)
     

@@ -135,7 +135,14 @@ class SchedulingContext:
     resource_availability: Dict[str, int]
     node_results: Dict[str, Any]
     
-
+@dataclass
+class NodePosition:
+    """Position of a node in the UI graph"""
+    x: float = 0.0
+    y: float = 0.0
+    
+    def to_dict(self) -> Dict[str, float]:
+        return {"x": self.x, "y": self.y}
 
 @dataclass
 class VisualNode:

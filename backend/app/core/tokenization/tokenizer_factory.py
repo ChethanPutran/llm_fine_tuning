@@ -3,6 +3,7 @@ from .base import BaseTokenizer
 from .bpe_tokenizer import BPETokenizer
 from .wordpiece_tokenizer import WordPieceTokenizer
 from .sentencepiece_tokenizer import SentencePieceTokenizer
+from .config import TokenizationConfig
 
 class TokenizerFactory:
     """Factory pattern for tokenizer creation"""
@@ -14,7 +15,7 @@ class TokenizerFactory:
     }
     
     @classmethod
-    def get_tokenizer(cls, tokenizer_type: str, config: Dict[str, Any]) -> BaseTokenizer:
+    def get_tokenizer(cls, tokenizer_type: str, config:TokenizationConfig ) -> BaseTokenizer:
         """Get tokenizer instance by type"""
         tokenizer_class = cls._tokenizers.get(tokenizer_type)
         if not tokenizer_class:

@@ -1,0 +1,321 @@
+{
+  "backup_id": "backup_20260331_182953",
+  "created_at": "2026-03-31T18:29:53.690752+00:00",
+  "settings": {
+    "general": {
+      "app_name": "ML Pipeline Platform",
+      "version": "1.0.0",
+      "debug_mode": "False",
+      "log_level": "INFO",
+      "timezone": "UTC",
+      "max_concurrent_jobs": 10,
+      "default_priority": "NORMAL",
+      "appName": "LLM Fine-tuning Platform",
+      "appVersion": "1.0.0",
+      "environment": "development",
+      "debugMode": true,
+      "theme": "light",
+      "language": "en",
+      "dateFormat": "YYYY-MM-DD",
+      "notificationsEnabled": true,
+      "emailNotifications": false,
+      "desktopNotifications": true,
+      "soundEnabled": false,
+      "autoSave": true,
+      "autoSaveInterval": 30,
+      "compactMode": false,
+      "animationsEnabled": true,
+      "tooltipsEnabled": true
+    },
+    "resources": {
+      "cpu_limit": 8,
+      "memory_limit_gb": 32,
+      "gpu_limit": 2,
+      "storage_limit_gb": 100,
+      "temp_cleanup_days": 7
+    },
+    "data_collection": {
+      "default_limit": 100,
+      "max_limit": 10000,
+      "default_search_engine": "google",
+      "supported_sources": [
+        "web",
+        "books",
+        "news",
+        "academic",
+        "social_media"
+      ],
+      "rate_limit_per_minute": 60,
+      "timeout_seconds": 300
+    },
+    "preprocessing": {
+      "default_batch_size": 32,
+      "max_file_size_mb": 1024,
+      "supported_formats": [
+        "csv",
+        "json",
+        "parquet",
+        "txt",
+        "html",
+        "pdf",
+        "docx"
+      ],
+      "output_formats": [
+        "parquet",
+        "csv",
+        "json",
+        "avro"
+      ],
+      "max_parallel_jobs": 4
+    },
+    "tokenization": {
+      "default_vocab_size": 32000,
+      "min_vocab_size": 1000,
+      "max_vocab_size": 100000,
+      "supported_types": [
+        "bpe",
+        "wordpiece",
+        "sentencepiece"
+      ],
+      "cache_enabled": true
+    },
+    "training": {
+      "default_epochs": 3,
+      "default_batch_size": 32,
+      "default_learning_rate": 0.001,
+      "mixed_precision": true,
+      "gradient_checkpointing": false,
+      "checkpoint_frequency": 1000,
+      "early_stopping_patience": 3
+    },
+    "finetuning": {
+      "strategies": [
+        "full_finetune",
+        "lora",
+        "adapter",
+        "prefix_tuning"
+      ],
+      "default_strategy": "lora",
+      "lora_r": 8,
+      "lora_alpha": 32,
+      "lora_dropout": 0.1
+    },
+    "optimization": {
+      "types": [
+        "pruning",
+        "quantization",
+        "distillation"
+      ],
+      "default_type": "quantization",
+      "pruning_target": 0.3,
+      "quantization_bits": 8,
+      "distillation_temperature": 3.0
+    },
+    "deployment": {
+      "targets": [
+        "local",
+        "cloud",
+        "edge"
+      ],
+      "default_target": "local",
+      "frameworks": [
+        "torchserve",
+        "tensorflow-serving",
+        "onnx"
+      ],
+      "default_framework": "torchserve",
+      "health_check_interval": 30,
+      "auto_scale": false,
+      "defaultPort": 8080,
+      "workers": 4,
+      "maxBatchSize": 32,
+      "enableMetrics": true,
+      "enableTracing": false,
+      "metricsPort": 9090,
+      "healthCheckEnabled": true,
+      "healthCheckInterval": 30,
+      "rateLimitEnabled": true,
+      "rateLimitPerMinute": 60,
+      "corsEnabled": true,
+      "allowedOrigins": [
+        "http://localhost:3000"
+      ],
+      "sslEnabled": false,
+      "sslCertPath": "",
+      "sslKeyPath": "",
+      "loadBalancing": "round_robin",
+      "autoScaling": false,
+      "minReplicas": 1,
+      "maxReplicas": 10,
+      "targetCPUUtilization": 70
+    },
+    "pipeline": {
+      "default_priority": "NORMAL",
+      "max_nodes": 50,
+      "timeout_seconds": 3600,
+      "retry_policy": {
+        "max_retries": 3,
+        "delay_seconds": 5,
+        "backoff_multiplier": 2
+      }
+    },
+    "storage": {
+      "data_path": "./data",
+      "model_path": "./models",
+      "temp_path": "./temp",
+      "backup_enabled": true,
+      "backup_interval_days": 1,
+      "max_backups": 10
+    },
+    "security": {
+      "api_key_required": false,
+      "cors_origins": [
+        "*"
+      ],
+      "rate_limit_per_minute": 100,
+      "max_request_size_mb": 100,
+      "enableAuth": false,
+      "authProvider": "jwt",
+      "jwtSecret": "",
+      "jwtExpiration": 3600,
+      "apiKeyRequired": false,
+      "apiKeyHeader": "X-API-Key",
+      "rateLimitEnabled": true,
+      "rateLimitPerMinute": 60,
+      "allowedOrigins": [
+        "http://localhost:3000"
+      ],
+      "sessionTimeout": 3600,
+      "passwordPolicy": "strong",
+      "twoFactorEnabled": false,
+      "ipWhitelist": [],
+      "blacklistEnabled": false,
+      "blacklistedIPs": [],
+      "auditLogging": true,
+      "auditLogRetention": 90,
+      "dataRetentionDays": 365,
+      "encryptionAlgorithm": "AES-256-GCM"
+    },
+    "notifications": {
+      "email_enabled": false,
+      "email_smtp_host": "",
+      "email_smtp_port": 587,
+      "email_from": "",
+      "webhook_enabled": false,
+      "webhook_url": ""
+    },
+    "ui": {
+      "primaryColor": "#1976d2",
+      "secondaryColor": "#dc004e",
+      "backgroundColor": "#f5f5f5",
+      "paperColor": "#ffffff",
+      "borderRadius": 8,
+      "fontSize": 14,
+      "density": "comfortable",
+      "sidebarCollapsed": false,
+      "showBreadcrumbs": true,
+      "showRecentActivities": true,
+      "maxRecentItems": 10
+    },
+    "processing": {
+      "defaultBatchSize": 16,
+      "maxWorkers": 4,
+      "cacheEnabled": true,
+      "memoryLimit": 8192,
+      "timeoutSeconds": 3600,
+      "retryAttempts": 3,
+      "retryDelay": 1000,
+      "maxQueueSize": 100,
+      "priorityQueue": true,
+      "parallelProcessing": true,
+      "gpuMemoryFraction": 0.8,
+      "cpuThreads": 4,
+      "enableProfiling": false,
+      "logLevel": "info"
+    },
+    "models": {
+      "defaultModel": "gpt2",
+      "modelCachePath": "./models/cache",
+      "downloadTimeout": 300,
+      "useGPU": true,
+      "precision": "fp32",
+      "maxSequenceLength": 512,
+      "modelParallelism": false,
+      "gradientCheckpointing": true,
+      "mixedPrecision": false,
+      "optimizer": "adamw",
+      "learningRateScheduler": "linear",
+      "warmupSteps": 0,
+      "weightDecay": 0.01,
+      "dropoutRate": 0.1,
+      "attentionProbsDropout": 0.1,
+      "hiddenDropout": 0.1
+    },
+    "data": {
+      "dataStoragePath": "./data",
+      "maxFileSizeMB": 1024,
+      "supportedFormats": [
+        "csv",
+        "json",
+        "parquet",
+        "txt"
+      ],
+      "autoCleanup": true,
+      "cleanupDays": 30,
+      "compressionEnabled": true,
+      "compressionLevel": 6,
+      "encryptionEnabled": false,
+      "encryptionKey": "",
+      "backupEnabled": true,
+      "backupInterval": 24,
+      "maxBackups": 10,
+      "dataValidation": true,
+      "deduplicationEnabled": true,
+      "samplingRate": 1,
+      "shuffleData": true,
+      "seed": 42
+    },
+    "integrations": {
+      "slackWebhook": "",
+      "discordWebhook": "",
+      "teamsWebhook": "",
+      "emailSmtp": "",
+      "emailPort": 587,
+      "emailUser": "",
+      "emailPassword": "",
+      "emailFrom": "",
+      "webhookEnabled": false,
+      "webhookUrl": "",
+      "webhookEvents": [
+        "start",
+        "complete",
+        "failed"
+      ],
+      "prometheusEnabled": true,
+      "prometheusUrl": "http://localhost:9090",
+      "grafanaEnabled": false,
+      "grafanaUrl": "",
+      "sentryEnabled": false,
+      "sentryDsn": ""
+    },
+    "advanced": {
+      "experimentalFeatures": false,
+      "telemetryEnabled": true,
+      "crashReporting": true,
+      "debugTools": false,
+      "customPlugins": [],
+      "customScripts": [],
+      "environmentVariables": {},
+      "customHeaders": {},
+      "proxyEnabled": false,
+      "proxyUrl": "",
+      "proxyUsername": "",
+      "proxyPassword": "",
+      "customCA": "",
+      "verboseLogging": false,
+      "traceLogging": false,
+      "performanceMode": false
+    }
+  },
+  "version": "1.0"
+}

@@ -2,12 +2,13 @@ import aiohttp
 from bs4 import BeautifulSoup
 from typing import List, Dict, Any, Optional
 import hashlib
+from concurrent.futures import ProcessPoolExecutor
+from pydantic import BaseModel, Field
 from urllib.parse import urljoin, urlparse, quote
 import asyncio
 from datetime import datetime, timedelta
 import random
-from .base import BaseCrawler, Document
-
+from .base import BaseCrawler, Document, BaseScraper
 
 class RateLimiter:
     """Simple rate limiter to avoid being blocked"""
@@ -26,7 +27,9 @@ class RateLimiter:
         
         self.last_request_time = datetime.now()
 
-class WebScraper(BaseCrawler):
+
+
+class WebScraper(BaseScraper):
     """Web scraper implementation"""
     
     def __init__(self, config: Dict[str, Any]):
@@ -46,80 +49,121 @@ class WebScraper(BaseCrawler):
             'Connection': 'keep-alive',
             'Upgrade-Insecure-Requests': '1'
         }
+
+    async def scrape(self, topic: str, num_workers: int = 2, save: bool = True):
+        search_urls = await self._get_search_urls(topic, self.headers, self.timeout)
+        search_urls = list(set(search_urls))[:self.config.get('max_search_results', num_workers)]  # Remove duplicates
+
+        if not search_urls:
+            raise ValueError("No search results found for the given topic") 
+
+        # Prepare arguments that need to be passed to each process
+        # We pass headers and timeout because 'self' isn't available in the worker
+        scraper_args = {
+            'timeout': self.timeout,
+            'headers': self.headers
+        }
+
+        # Split URLs into chunks
+        chunk_size = (len(search_urls) + num_workers - 1) // num_workers
+        chunks = [search_urls[i:i + chunk_size] for i in range(0, len(search_urls), chunk_size)]
+
+        loop = asyncio.get_running_loop()
         
-    async def crawl(self, topic: str, limit: int = 100) -> List[Document]:
-        """Crawl web pages based on topic"""
-        search_urls = await self._get_search_urls(topic)
-        visited = set()
-        
+        with ProcessPoolExecutor(max_workers=num_workers) as executor:
+            tasks = [
+                loop.run_in_executor(
+                    executor, 
+                    WebScraper.run_worker_sync, 
+                    chunk, 
+                    topic, 
+                    scraper_args
+                )
+                for chunk in chunks
+            ]
+            
+            worker_results = await asyncio.gather(*tasks)
+            
+        flat_results = [doc for sublist in worker_results for doc in sublist]
+        self.documents.extend(flat_results)
+        print(f"Scraping completed. Total documents collected: {len(flat_results)}")
+        if save:
+            self.save_documents(f"scraped_{topic.replace(' ', '_')}.json")
+       
+
+    @staticmethod
+    def run_worker_sync(urls: List[str], topic: str, config_args: Dict):
+        """The entry point for the new process"""
+        return asyncio.run(WebScraper.scrape_urls(urls, topic, config_args))
+
+    @staticmethod
+    async def scrape_urls(urls: List[str], topic: str, config_args: Dict) -> List[Document]:
+        """The async loop inside the child process"""
+        documents = []
+        # Extract config passed from main process
+        timeout = aiohttp.ClientTimeout(total=config_args.get('timeout', 10))
+        headers = config_args.get('headers')
+
         async with aiohttp.ClientSession() as session:
-            for url in search_urls[:limit]:
-                if url in visited:
-                    continue
-                
-                print(f"Scraping URL: {url}")
+            for url in urls:
                 try:
-                    doc = await self._scrape_url(session, url, topic)
-                    print(f"Scraped {url} - Document length: {len(doc.content) if doc else 'N/A'}")
-                    if doc and await self.validate(doc):
-                        self.documents.append(doc)
-                        visited.add(url)
+                    # Pass the required headers/timeout to the static scrape_url
+                    doc = await WebScraper.scrape_url(session, url, topic, timeout, headers)  # type: ignore
+                    print(f"Scraped {url} - Content length: {len(doc.content) if doc else 'N/A'}")
+                    if doc and await WebScraper.validate(doc):
+                        print(f"Validated document from {url} - Length: {len(doc.content)}")
+                        print(f"Metadata: {doc.metadata}")
+                        documents.append(doc)
                 except Exception as e:
                     print(f"Error scraping {url}: {e}")
-                    
-        return self.documents
-    
+        return documents
 
-    async def _scrape_url(self, session: aiohttp.ClientSession, 
-                         url: str, topic: str) -> Document | None:
-        """Scrape content from a single URL"""
-        async with session.get(url, timeout=self.timeout, headers=self.headers) as response:
-            print(f"Received response from {url} - Status: {response.status}")
+    @staticmethod
+    async def scrape_url(session, url, topic, timeout, headers) -> Document | None:
+        async with session.get(url, timeout=timeout, headers=headers) as response:
             if response.status != 200:
                 return None
                 
             html = await response.text()
             soup = BeautifulSoup(html, 'html.parser')
             
-            # Extract main content
             for script in soup(["script", "style"]):
                 script.decompose()
                 
-            text = soup.get_text()
-            print(f"Raw text length from {url}: {len(text)} characters. Doc: {text}")
-            lines = (line.strip() for line in text.splitlines())
+            # FIX: Ensure this is a standard string
+            raw_text = soup.get_text()
+            lines = (line.strip() for line in raw_text.splitlines())
             chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
-            text = ' '.join(chunk for chunk in chunks if chunk)
+            text = str(' '.join(chunk for chunk in chunks if chunk)) # Cast to str
             
-            # Generate document ID
+            # FIX: Ensure title is a standard string, not a NavigableString
+            title = str(soup.title.string) if (soup.title and soup.title.string) else ''
+            
             doc_id = hashlib.md5(f"{url}_{topic}".encode()).hexdigest()
             
             return Document(
                 id=doc_id,
                 content=text,
                 metadata={
-                    'url': url,
-                    'topic': topic,
-                    'title': soup.title.string if soup.title else ''
+                    'url': str(url),
+                    'topic': str(topic),
+                    'title': title
                 },
                 source='web'
             )
-    
-    async def validate(self, document: Document) -> bool:
+        
+    @staticmethod
+    async def validate(document: Document) -> bool:
         """Validate document quality"""
-        print(document.content[:200])  # Print first 200 characters for debugging
         # Check minimum content length
         if len(document.content) < 100:
+            print(f"Document from {document.metadata['url']} rejected for low content length")
             return False
         
-        # Check for too much boilerplate
-        if document.content.count('\n') < 5:
-            return False
             
         return True
-    
-    
-    async def _get_search_urls(self, topic: str) -> List[str]:
+      
+    async def _get_search_urls(self, topic: str,*args) -> List[str]:
         """Get URLs from multiple search engines"""
         urls = []
 
@@ -137,7 +181,7 @@ class WebScraper(BaseCrawler):
         elif self.search_engine == 'duckduckgo':
             urls = await self._search_duckduckgo(topic)
         elif self.search_engine == 'wikipedia':
-            urls = await self._search_wikipedia(topic)
+            urls = await self._search_wikipedia(topic, *args)
         elif self.search_engine == 'academic':
             urls = await self._search_academic(topic)  # ArXiv, PubMed, etc.
         else:
@@ -146,6 +190,7 @@ class WebScraper(BaseCrawler):
         
         # Add fallback URLs if no results
         if not urls:
+            print("No search results found, using fallback URLs")
             urls = await self._get_fallback_urls(topic)
         
         # Filter and validate URLs
@@ -189,22 +234,13 @@ class WebScraper(BaseCrawler):
     async def _search_google_scrape(self, topic: str) -> List[str]:
         """Scrape Google search results (may be blocked)"""
         urls = []
-        headers = {
-            'User-Agent': self.user_agent,
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Accept-Encoding': 'gzip, deflate',
-            'DNT': '1',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1'
-        }
-        
+      
         query = quote(topic)
         search_url = f"https://www.google.com/search?q={query}&num=20"
         
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(search_url, headers=headers, timeout=self.timeout) as response:
+                async with session.get(search_url, headers=self.headers, timeout=self.timeout) as response:
                     if response.status == 200:
                         html = await response.text()
                         soup = BeautifulSoup(html, 'html.parser')
@@ -277,8 +313,9 @@ class WebScraper(BaseCrawler):
         
         return urls
     
-    async def _search_wikipedia(self, topic: str) -> List[str]:
+    async def _search_wikipedia(self, topic: str, *args, **kwargs) -> List[str]:
         """Search Wikipedia articles"""
+        print(f"Searching Wikipedia for topic: {topic}")
         urls = []
         base_url = "https://en.wikipedia.org/w/api.php"
         params = {
@@ -291,7 +328,7 @@ class WebScraper(BaseCrawler):
         
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(base_url, params=params, timeout=self.timeout) as response:
+                async with session.get(base_url, params=params, timeout=self.timeout, headers=self.headers) as response:
                     if response.status == 200:
                         data = await response.json()
                         for result in data.get('query', {}).get('search', []):
@@ -303,21 +340,21 @@ class WebScraper(BaseCrawler):
         
         return urls
     
-    async def _search_academic(self, topic: str) -> List[str]:
+    async def _search_academic(self, topic: str, *args, **kwargs) -> List[str]:
         """Search academic sources (ArXiv, PubMed, etc.)"""
         urls = []
         
         # Search ArXiv
-        arxiv_urls = await self._search_arxiv(topic)
+        arxiv_urls = await self._search_arxiv(topic, *args, **kwargs)
         urls.extend(arxiv_urls)
         
         # Search PubMed
-        pubmed_urls = await self._search_pubmed(topic)
+        pubmed_urls = await self._search_pubmed(topic, *args, **kwargs)
         urls.extend(pubmed_urls)
         
         return urls
     
-    async def _search_arxiv(self, topic: str) -> List[str]:
+    async def _search_arxiv(self, topic: str, *args, **kwargs) -> List[str]:
         """Search ArXiv for academic papers"""
         urls = []
         base_url = "http://export.arxiv.org/api/query"
@@ -329,7 +366,7 @@ class WebScraper(BaseCrawler):
         
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(base_url, params=params, timeout=self.timeout) as response:
+                async with session.get(base_url, params=params, timeout=self.timeout, headers=self.headers) as response:
                     if response.status == 200:
                         text = await response.text()
                         soup = BeautifulSoup(text, 'xml')
@@ -342,7 +379,7 @@ class WebScraper(BaseCrawler):
         
         return urls
     
-    async def _search_pubmed(self, topic: str) -> List[str]:
+    async def _search_pubmed(self, topic: str, *args, **kwargs) -> List[str]:
         """Search PubMed for medical/scientific papers"""
         urls = []
         base_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
@@ -355,7 +392,7 @@ class WebScraper(BaseCrawler):
         
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(base_url, params=params, timeout=self.timeout) as response:
+                async with session.get(base_url, params=params, timeout=self.timeout, headers=self.headers) as response:
                     if response.status == 200:
                         data = await response.json()
                         ids = data.get('esearchresult', {}).get('idlist', [])
@@ -367,7 +404,7 @@ class WebScraper(BaseCrawler):
         
         return urls
     
-    async def _search_multiple_engines(self, topic: str) -> List[str]:
+    async def _search_multiple_engines(self, topic: str, *args, **kwargs) -> List[str]:
         """Search multiple engines in parallel for comprehensive results"""
         engines = [
             self._search_google,
@@ -459,4 +496,25 @@ class WebScraper(BaseCrawler):
         
         return related_terms
     
+def main():
+    # Example Config
+    config = {
+        'timeout': 15,
+        'requests_per_second': 2,
+        'max_search_results': 10,
+        'search_engine': 'wikipedia'
+    }
+    
+    scraper = WebScraper(config)
+    
+    # This now uses the Multi-CPU logic
+    print("Starting parallel scrape...")
+    res = asyncio.run(scraper.scrape("Artificial Intelligence", num_workers=2))
+    
+    print(f"\n--- Results ---")
+    for d in res[:3]:
+        print(f"Source: {d.metadata['url']} | Length: {len(d.content)}")
 
+if __name__ == "__main__":
+    main()
+    

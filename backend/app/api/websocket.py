@@ -136,6 +136,21 @@ class ConnectionManager:
         """Notify all subscribers about execution update"""
         await self.broadcast_execution_update(execution_id, data)
 
+    async def broadcast_to_all_clients(self, data: Dict[str, Any]):
+        """Broadcast a message to all connected clients"""
+        message = json.dumps(data)
+        disconnected_clients = []
+        for client_id, websockets in self.active_connections.items():
+            for websocket in websockets:
+                try:
+                    await websocket.send_text(message)
+                except Exception as e:
+                    logger.error(f"Failed to send message to client {client_id}: {e}")
+                    disconnected_clients.append((client_id, websocket))
+        
+        # Clean up disconnected clients
+        for client_id, websocket in disconnected_clients:
+            self.disconnect(websocket, client_id)
 
 # Global instance
 manager = ConnectionManager()

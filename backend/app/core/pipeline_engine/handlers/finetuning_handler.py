@@ -1,20 +1,18 @@
 # app/core/pipeline_engine/handlers/finetuning_handler.py
 
-"""
-Handler for fine-tuning jobs
-"""
-
 from typing import Dict, Any
 import pandas as pd
 import logging
 
 from app.common.job_models import FinetuningJob
+from app.core.finetuning.pipeline import FinetuningPipeline
 from app.core.pipeline_engine.handlers.base_handler import BaseHandler
-from app.core.training.trainer import Trainer
-from app.core.training.configs import FinetuningConfig
 from app.core.models.model_factory import ModelFactory
 from app.core.finetuning.strategies import FinetuningStrategyFactory
+from app.core.finetuning.tasks import FinetuningTaskFactory
 from app.core.config import settings
+from app.core.training.config import TrainingConfig
+from app.core.datasets.factory import DatasetFactory
 
 logger = logging.getLogger(__name__)
 
@@ -28,67 +26,47 @@ class FinetuningHandler(BaseHandler):
         await self._mark_started(job.job_id)
         
         try:
+            tuning_config = job.config
+            model_config = job.base_model_config
+            dataset_config = job.dataset_config
+
             await self._update_progress(job.job_id, 10, "Loading dataset")
             
-            # Load dataset
-            df = pd.read_csv(job.dataset_path)
+            
+            dataset = DatasetFactory.get_dataset(dataset_config.dataset_type, dataset_config)
             
             await self._update_progress(job.job_id, 30, "Loading model")
             
             # Get model
-            model = ModelFactory.get_model(
-                job.base_model_type,
-                job.base_model_name,
-                job.config
-            )
-            
-            await self._update_progress(job.job_id, 40, "Applying fine-tuning strategy")
+            model = ModelFactory.get_model(model_config)
             
             # Apply fine-tuning strategy
-            strategy = FinetuningStrategyFactory.get_strategy(
-                job.strategy_type,
-                job.config
-            )
+            strategy = FinetuningStrategyFactory.get_strategy(tuning_config.strategy_type, tuning_config)
+
+            await self._update_progress(job.job_id, 40, "Applying fine-tuning strategy")
             model.model = strategy.apply(model.model)
+
+            task = FinetuningTaskFactory.get_task(tuning_config.task_type, tuning_config)
+
+            trainer_config = TrainingConfig(
+                learning_rate=tuning_config.learning_rate,
+                num_epochs=tuning_config.num_epochs,
+                batch_size=tuning_config.batch_size
+            )
+            trainer = FinetuningPipeline(model=model,
+                                         strategy=strategy,
+                                         task=task,
+                                         trainer_config=trainer_config)
+           
             
             await self._update_progress(job.job_id, 50, "Preparing data")
-            
-            # Prepare dataset based on task
-            if job.task_type == "classification":
-                texts = df['text'].tolist()
-                labels = df['label'].tolist()
-                
-                split_idx = int(len(texts) * 0.8)
-                from app.core.pipeline_engine.handlers.training_handler import TextDataset
-                train_dataset = TextDataset(
-                    texts[:split_idx],
-                    labels[:split_idx],
-                    model.tokenizer,
-                    job.config.get('max_length', 512)
-                )
-                eval_dataset = TextDataset(
-                    texts[split_idx:],
-                    labels[split_idx:],
-                    model.tokenizer,
-                    job.config.get('max_length', 512)
-                )
-            else:
-                # For other tasks, implement similar dataset preparation
-                train_dataset = None
-                eval_dataset = None
-            
+        
+            dataset = DatasetFactory.get_dataset(dataset_config.dataset_type, dataset_config)
+            trainer.setup(dataset)
+
             await self._update_progress(job.job_id, 70, "Fine-tuning model")
-            
-            # Create trainer
-            config = FinetuningConfig()
-            for key, value in job.config.items():
-                if hasattr(config, key):
-                    setattr(config, key, value)
-            
-            trainer = Trainer(model.model, config.to_dict())
-            
             # Train
-            results = trainer.train(train_dataset, eval_dataset)
+            results = trainer.train()
             
             await self._update_progress(job.job_id, 90, "Saving model")
             
@@ -99,8 +77,8 @@ class FinetuningHandler(BaseHandler):
             result = {
                 "success": True,
                 "output_path": output_path,
-                "strategy": job.strategy_type,
-                "task": job.task_type,
+                "strategy": tuning_config.strategy_type,
+                "task": tuning_config.task_type,
                 "metrics": {
                     "train_loss": results['train_losses'][-1] if results['train_losses'] else None,
                     "eval_loss": results['eval_losses'][-1] if results['eval_losses'] else None,
@@ -109,9 +87,8 @@ class FinetuningHandler(BaseHandler):
                 "trainable_params": strategy.get_trainable_params(model.model)
             }
             
-            job.output_path = output_path
+            tuning_config.output_model_path = output_path
             job.metrics = result["metrics"]
-            job.trainable_params = result["trainable_params"]
             job.result = result
             
             await self._mark_completed(job.job_id, result)

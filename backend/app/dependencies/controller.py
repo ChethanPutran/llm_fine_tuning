@@ -9,6 +9,9 @@ from app.controllers.optimization_controller import OptimizationController
 from app.controllers.deployment_controller import DeploymentController
 from app.controllers.tokenization_controller import TokenizationController
 from app.controllers.pipeline_controller import PipelineController
+from app.controllers.settings_controller import SettingsController
+from app.controllers.general_controller import GeneralController
+
 
 # Global orchestrator instance
 _orchestrator = None
@@ -21,6 +24,18 @@ def get_orchestrator() -> PipelineOrchestrator:
         _orchestrator = PipelineOrchestrator(num_workers=4)
     return _orchestrator
 
+
+async def get_settings_controller(
+    orchestrator: PipelineOrchestrator = Depends(get_orchestrator)
+) -> SettingsController:
+    """Get settings controller instance"""
+    return SettingsController(orchestrator)
+
+async def get_general_controller(
+    orchestrator: PipelineOrchestrator = Depends(get_orchestrator)
+) -> GeneralController:
+    """Get general controller instance"""
+    return GeneralController(orchestrator)
 
 def get_data_collection_controller(
     orchestrator: PipelineOrchestrator = Depends(get_orchestrator)

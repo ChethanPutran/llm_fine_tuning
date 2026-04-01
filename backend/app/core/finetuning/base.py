@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Union
 import torch.nn as nn
+from transformers import PreTrainedModel
 
 class FinetuningStrategy(ABC):
     """Abstract base class for fine-tuning strategies"""
@@ -10,7 +11,7 @@ class FinetuningStrategy(ABC):
         self.name = self.__class__.__name__
     
     @abstractmethod
-    def apply(self, model: nn.Module) -> nn.Module:
+    def apply(self, model: Union[PreTrainedModel, nn.Module]) -> nn.Module:
         """Apply fine-tuning strategy to model"""
         pass
     

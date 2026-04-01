@@ -1,11 +1,12 @@
 from typing import Any, List, Dict, Tuple
 from collections import defaultdict
 from .base import BaseTokenizer
+from .config import TokenizationConfig
 
 class BPETokenizer(BaseTokenizer):
     """Byte Pair Encoding tokenizer implementation"""
     
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: TokenizationConfig):
         super().__init__(config)
         self.merges = {}  # Pair -> new token mapping
         

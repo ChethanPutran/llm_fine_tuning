@@ -1,9 +1,5 @@
 # app/core/pipeline_engine/handlers/tokenization_handler.py
 
-"""
-Handler for tokenization jobs
-"""
-
 from typing import Dict, Any
 import os
 import logging
@@ -25,20 +21,21 @@ class TokenizationHandler(BaseHandler):
         await self._mark_started(job.job_id)
         
         try:
-            await self._update_progress(job.job_id, 10, f"Loading dataset from {job.dataset_path}")
+            config = job.config 
+            await self._update_progress(job.job_id, 10, f"Loading dataset from {config.dataset_path}")
             
             # Load dataset
-            texts = await self._load_dataset(job.dataset_path)
+            texts = await self._load_dataset(config.dataset_path)
             
-            await self._update_progress(job.job_id, 30, f"Training {job.tokenizer_type} tokenizer")
+            await self._update_progress(job.job_id, 30, f"Training {config.tokenizer_type} tokenizer")
             
             # Get tokenizer
-            tokenizer = TokenizerFactory.get_tokenizer(job.tokenizer_type, job.config)
+            tokenizer = TokenizerFactory.get_tokenizer(config.tokenizer_type, config)
             
             await self._update_progress(job.job_id, 50, "Building vocabulary")
             
             # Train tokenizer
-            tokenizer.train(texts, vocab_size=job.vocab_size)
+            tokenizer.train(texts)
             
             await self._update_progress(job.job_id, 80, "Saving tokenizer")
             
@@ -50,12 +47,12 @@ class TokenizationHandler(BaseHandler):
             result = {
                 "success": True,
                 "output_path": output_path,
-                "tokenizer_type": job.tokenizer_type,
-                "vocab_size": job.vocab_size,
-                "config": job.config
+                "tokenizer_type": config.tokenizer_type,
+                "vocab_size": config.vocab_size,
+                "config": config
             }
             
-            job.tokenizer_path = output_path
+            config.tokenizer_path = output_path
             job.result = result
             
             await self._mark_completed(job.job_id, result)

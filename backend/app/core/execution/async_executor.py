@@ -24,7 +24,13 @@ class AsyncExecutor:
         # Create workers
         for i in range(num_workers):
             worker = Worker(f"worker-{i}", pipeline_executor, self.job_queue, self.resource_manager)
+
             self.workers.append(worker)
+            
+    async def get_queued_jobs(self) -> List[Dict[str, Any]]:
+        """Get list of queued jobs"""
+        jobs = await self.job_queue.list_jobs(JobStatus.QUEUED)
+        return [job.to_dict() for job in jobs]
     
     async def start(self):
         """Start all workers"""

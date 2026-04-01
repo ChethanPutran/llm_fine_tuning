@@ -7,22 +7,23 @@ from tqdm import tqdm
 import mlflow
 from typing import Dict, Any, Optional
 import numpy as np
+from .config import TrainingConfig
 
 class Trainer:
     """Training class with MLflow tracking"""
     
-    def __init__(self, model: nn.Module, config: Dict[str, Any]):
+    def __init__(self, model: nn.Module, config: TrainingConfig):
         self.model = model
         self.config = config
-        self.device = torch.device(config.get('device', 'cuda' if torch.cuda.is_available() else 'cpu'))
+        self.device = torch.device(config.device)
         self.model.to(self.device)
         
         # Training parameters
-        self.learning_rate = config.get('learning_rate', 2e-5)
-        self.num_epochs = config.get('num_epochs', 3)
-        self.batch_size = config.get('batch_size', 16)
-        self.warmup_steps = config.get('warmup_steps', 0)
-        self.weight_decay = config.get('weight_decay', 0.01)
+        self.learning_rate = config.learning_rate
+        self.num_epochs = config.num_epochs
+        self.batch_size = config.batch_size
+        self.warmup_steps = config.additional_params.warmup_steps
+        self.weight_decay = config.additional_params.weight_decay
         
         # Metrics
         self.train_losses = []
@@ -30,7 +31,8 @@ class Trainer:
         self.train_accuracies = []
         
         # MLflow setup
-        mlflow.set_tracking_uri(config.get('mlflow_uri', './mlruns'))
+        mlflow.set_tracking_uri(config.additional_params.mlflow_uri)
+
         
     def train(self, train_dataset, eval_dataset=None) -> Dict[str, Any]:
         """Train the model"""
@@ -55,7 +57,7 @@ class Trainer:
         
         # MLflow tracking
         with mlflow.start_run() as run:
-            mlflow.log_params(self.config)
+            mlflow.log_params(self.config.additional_params.mlflow_params)
             
             for epoch in range(self.num_epochs):
                 # Training

@@ -6,8 +6,6 @@ from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from typing import Dict, Any
 from datetime import datetime
-import os
-
 from app.core.config import settings
 from app.core.exceptions import PlatformException
 from app.core.logging_config import setup_logging
@@ -19,7 +17,9 @@ from app.api.routes import (
     finetuning,
     optimization,
     deployment,
-    pipeline  # Add pipeline routes
+    pipeline,
+    settings as settings_router,
+    general as general_router
 )
 from app.api.websocket import manager as websocket_manager
 from app.core.pipeline_engine.orchestrator import PipelineOrchestrator
@@ -102,6 +102,8 @@ app.include_router(finetuning.router, prefix=settings.API_V1_PREFIX)
 app.include_router(optimization.router, prefix=settings.API_V1_PREFIX)
 app.include_router(deployment.router, prefix=settings.API_V1_PREFIX)
 app.include_router(pipeline.router, prefix=settings.API_V1_PREFIX)
+app.include_router(settings_router.router, prefix=settings.API_V1_PREFIX)
+app.include_router(general_router.router, prefix=settings.API_V1_PREFIX)
 
 # Global exception handlers
 
@@ -132,162 +134,6 @@ async def general_exception_handler(request, exc: Exception):
             "timestamp": datetime.now().isoformat()
         }
     )
-
-
-# WebSocket endpoint for real-time updates
-@app.websocket("/ws/{client_id}")
-async def websocket_endpoint(websocket: WebSocket, client_id: str):
-    """
-    WebSocket endpoint for real-time job status updates
-    """
-    await manager.connect(websocket, client_id)
-    
-    try:
-        while True:
-            # Receive message from client
-            data = await websocket.receive_text()
-            
-            # Process message based on type
-            if data.startswith("subscribe:"):
-                job_id = data.split(":")[1]
-                await manager.subscribe_to_job(websocket, job_id)
-                await manager.send_personal_message(
-                    f"Subscribed to job {job_id}", 
-                    websocket
-                )
-            
-            elif data.startswith("subscribe-execution:"):
-                execution_id = data.split(":")[1]
-                await manager.subscribe_to_execution(websocket, execution_id)
-                await manager.send_personal_message(
-                    f"Subscribed to execution {execution_id}", 
-                    websocket
-                )
-            
-            elif data.startswith("unsubscribe:"):
-                job_id = data.split(":")[1]
-                await manager.unsubscribe_from_job(websocket, job_id)
-                await manager.send_personal_message(
-                    f"Unsubscribed from job {job_id}", 
-                    websocket
-                )
-            
-            elif data == "status":
-                # Send current status of all jobs
-                status = await get_system_status(app)
-                await manager.send_personal_message(
-                    str(status), 
-                    websocket
-                )
-            
-            elif data == "ping":
-                await websocket.send_text("pong")
-    
-    except WebSocketDisconnect:
-        manager.disconnect(websocket, client_id)
-        logger.info(f"Client {client_id} disconnected")
-
-
-# Health check endpoint
-@app.get("/health")
-async def health_check():
-    """
-    Health check endpoint for monitoring
-    """
-    return {
-        "status": "healthy",
-        "timestamp": datetime.now().isoformat(),
-        "version": "1.0.0",
-        "environment": settings.ENVIRONMENT
-    }
-
-
-# System info endpoint
-@app.get("/system/info")
-async def system_info():
-    """
-    Get system information
-    """
-    import torch
-    import psutil
-    import platform
-    
-    return {
-        "python_version": platform.python_version(),
-        "platform": platform.platform(),
-        "cuda_available": torch.cuda.is_available(),
-        "cuda_version": torch.version.cuda if torch.cuda.is_available() else None,
-        "gpu_count": torch.cuda.device_count() if torch.cuda.is_available() else 0,
-        "memory_total_gb": round(psutil.virtual_memory().total/(1024**3), 2),
-        "memory_available_gb": round(psutil.virtual_memory().available/(1024**3), 2),
-        "cpu_count": psutil.cpu_count(),
-        "workers": settings.PIPELINE_WORKERS
-    }
-
-
-# Available models endpoint
-@app.get("/models/available")
-async def list_available_models():
-    """
-    List all available pre-trained models
-    """
-    return {
-        "bert": [
-            "bert-base-uncased",
-            "bert-large-uncased",
-            "bert-base-cased",
-            "bert-large-cased",
-            "bert-base-multilingual-cased"
-        ],
-        "gpt": [
-            "gpt2",
-            "gpt2-medium",
-            "gpt2-large",
-            "gpt2-xl"
-        ],
-        "llama": [
-            "meta-llama/Llama-2-7b-hf",
-            "meta-llama/Llama-2-13b-hf",
-            "meta-llama/Llama-2-70b-hf"
-        ],
-        "bart": [
-            "facebook/bart-base",
-            "facebook/bart-large"
-        ],
-        "vit": [
-            "google/vit-base-patch16-224",
-            "google/vit-large-patch16-224"
-        ],
-        "vlm": [
-            "llava-hf/llava-1.5-7b-hf",
-            "openai/clip-vit-large-patch14"
-        ]
-    }
-
-
-# Available datasets endpoint
-@app.get("/datasets/available")
-async def list_available_datasets():
-    """
-    List available datasets
-    """
-    import os
-    from pathlib import Path
-    
-    data_path = Path(settings.DATA_STORAGE_PATH)
-    datasets = []
-    
-    if data_path.exists():
-        for dataset_dir in data_path.glob("*"):
-            if dataset_dir.is_dir():
-                datasets.append({
-                    "name": dataset_dir.name,
-                    "path": str(dataset_dir),
-                    "size": sum(f.stat().st_size for f in dataset_dir.rglob('*')) if dataset_dir.exists() else 0,
-                    "modified": datetime.fromtimestamp(dataset_dir.stat().st_mtime).isoformat()
-                })
-    
-    return {"datasets": datasets}
 
 
 # Startup helper functions
@@ -362,10 +208,10 @@ async def load_configurations(app: FastAPI):
     from pathlib import Path
     
     # Initialize configs dict in app state
-    if not hasattr(app.state, 'configs'):
+    if not hasattr(app.state, 'config'):
         app.state.configs = {}
     
-    config_path = Path("./configs")
+    config_path = Path("./app/config")
     if config_path.exists():
         for config_file in config_path.glob("*.json"):
             try:
@@ -374,11 +220,12 @@ async def load_configurations(app: FastAPI):
                     app.state.configs[config_file.stem] = config
                 logger.info(f"Loaded configuration: {config_file.stem}")
             except Exception as e:
+                raise e
                 logger.error(f"Failed to load config {config_file}: {e}")
         
         logger.info(f"Loaded {len(app.state.configs)} configuration files")
     else:
-        logger.info("No configuration files found in ./configs")
+        logger.info("No configuration files found in ./app/config")
 
 
 async def cleanup_resources(app: FastAPI):
@@ -402,48 +249,6 @@ async def cleanup_resources(app: FastAPI):
         app.state.jobs.clear()
     
     logger.info("Cleanup completed")
-
-
-async def get_system_status(app: FastAPI) -> Dict[str, Any]:
-    """
-    Get current system status
-    """
-    import psutil
-    
-    active_jobs = 0
-    if hasattr(app.state, 'orchestrator'):
-        active_jobs = len(app.state.orchestrator.active_executions)
-    
-    return {
-        "cpu_percent": psutil.cpu_percent(interval=1),
-        "memory_percent": psutil.virtual_memory().percent,
-        "disk_usage": psutil.disk_usage('/').percent,
-        "active_jobs": active_jobs,
-        "active_executions": active_jobs,
-        "timestamp": datetime.now().isoformat()
-    }
-
-
-# Root endpoint
-@app.get("/")
-async def root():
-    """
-    Root endpoint with API information
-    """
-    return {
-        "name": settings.APP_NAME,
-        "version": "1.0.0",
-        "description": "LLM Fine-tuning Platform",
-        "docs_url": "/docs",
-        "api_prefix": settings.API_V1_PREFIX,
-        "websocket_url": "/ws/{client_id}",
-        "endpoints": {
-            "health": "/health",
-            "system_info": "/system/info",
-            "models": "/models/available",
-            "datasets": "/datasets/available"
-        }
-    }
 
 
 # Middleware for request logging

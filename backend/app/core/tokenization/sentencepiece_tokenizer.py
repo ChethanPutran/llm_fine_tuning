@@ -2,14 +2,16 @@ import sentencepiece as spm
 from typing import List, Dict, Any
 import os
 from .base import BaseTokenizer
+from .config import TokenizationConfig
 
 class SentencePieceTokenizer(BaseTokenizer):
     """SentencePiece tokenizer implementation"""
     
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: TokenizationConfig):
         super().__init__(config)
-        self.model_path = config.get('model_path', 'sentencepiece.model')
+        self.model_path = config.tokenization_model_config.model_path
         self.sp = None
+        self.model_config = config.tokenization_model_config
         
     def train(self, texts: List[str]) -> None:
         """Train SentencePiece tokenizer"""
@@ -22,16 +24,16 @@ class SentencePieceTokenizer(BaseTokenizer):
         # Train SentencePiece model
         model_prefix = self.model_path.replace('.model', '')
         
-        spm.SentencePieceTrainer.train(
+        spm.SentencePieceTrainer.Train(
             input=temp_file,
             model_prefix=model_prefix,
             vocab_size=self.vocab_size,
-            character_coverage=self.config.get('character_coverage', 0.9995),
-            model_type=self.config.get('model_type', 'unigram'),
-            input_sentence_size=self.config.get('input_sentence_size', 1000000),
-            shuffle_input_sentence=self.config.get('shuffle', True),
-            normalization_rule_name=self.config.get('normalization', 'nmt_nfkc'),
-            remove_extra_whitespaces=self.config.get('remove_whitespace', True),
+            character_coverage=self.model_config.character_coverage,
+            model_type=self.model_config.model_name,
+            input_sentence_size=self.model_config.input_sentence_size,
+            shuffle_input_sentence=self.model_config.shuffle_input_sentence,
+            normalization_rule_name=self.model_config.normalization_rule_name,
+            remove_extra_whitespaces=self.model_config.remove_extra_whitespaces,
             pad_id=0,
             unk_id=1,
             bos_id=2,

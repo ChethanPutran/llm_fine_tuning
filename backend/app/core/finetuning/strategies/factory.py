@@ -4,6 +4,7 @@ from .adapter import AdapterLayer
 from .full_finetune import FinetuningStrategy
 from .lora import LoRAStrategy
 from .prefix_tuning import PrefixTuningStrategy
+from ..config import FinetuningConfig
 
 class FinetuningStrategyFactory:
     """Factory pattern for creating finetuning strategies"""
@@ -16,7 +17,7 @@ class FinetuningStrategyFactory:
     }
     
     @classmethod
-    def get_strategy(cls, strategy_type: str, config: Dict[str, Any]) -> FinetuningStrategy:
+    def get_strategy(cls, strategy_type: str, config: FinetuningConfig) -> FinetuningStrategy:
         """Get finetuning strategy instance by type"""
         strategy_class = cls._strategies.get(strategy_type)
         if not strategy_class:

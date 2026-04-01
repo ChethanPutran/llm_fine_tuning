@@ -1,17 +1,19 @@
 from typing import List, Dict, Any
 from collections import defaultdict
+
+from app.core.tokenization.config import TokenizationConfig
 from .base import BaseTokenizer
 
 class WordPieceTokenizer(BaseTokenizer):
     """WordPiece tokenizer implementation (BERT-style)"""
     
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: TokenizationConfig):
         super().__init__(config)
-        self.unk_token = config.get('unk_token', '[UNK]')
-        self.pad_token = config.get('pad_token', '[PAD]')
-        self.cls_token = config.get('cls_token', '[CLS]')
-        self.sep_token = config.get('sep_token', '[SEP]')
-        self.mask_token = config.get('mask_token', '[MASK]')
+        self.unk_token = config.default_tokens.unk_token
+        self.pad_token = config.default_tokens.pad_token
+        self.cls_token = config.default_tokens.cls_token
+        self.sep_token = config.default_tokens.sep_token
+        self.mask_token = config.default_tokens.mask_token
         
     def train(self, texts: List[str]) -> None:
         """Train WordPiece tokenizer"""

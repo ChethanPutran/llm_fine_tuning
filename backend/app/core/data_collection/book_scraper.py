@@ -1,27 +1,31 @@
 import aiohttp
 from bs4 import BeautifulSoup
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import hashlib
 import asyncio
 from urllib.parse import urljoin
-from .base import BaseCrawler, Document
+from pydantic import BaseModel, Field
 
-class BookCrawler(BaseCrawler):
-    """Crawler for extracting data from books (Project Gutenberg, etc.)"""
+from .base import BaseCrawler, Document,BaseScraper
+
+
+
+class BookScraper(BaseScraper):
+    """Scraper for extracting data from books"""
     
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
         self.sources = config.get('sources', ['gutenberg', 'openlibrary'])
         self.max_books = config.get('max_books', 50)
         
-    async def crawl(self, topic: str, limit: int = 100) -> List[Document]:
-        """Crawl books based on topic"""
+    async def scrape(self, topic: str, limit: int = 100) -> List[Document]:
+        """Scrape books based on topic"""
         tasks = []
         
         if 'gutenberg' in self.sources:
-            tasks.append(self._crawl_gutenberg(topic, limit))
+            tasks.append(self._scrape_gutenberg(topic, limit))
         if 'openlibrary' in self.sources:
-            tasks.append(self._crawl_openlibrary(topic, limit))
+            tasks.append(self._scrape_openlibrary(topic, limit))
             
         results = await asyncio.gather(*tasks)
         
@@ -30,8 +34,8 @@ class BookCrawler(BaseCrawler):
             
         return self.documents[:limit]
     
-    async def _crawl_gutenberg(self, topic: str, limit: int) -> List[Document]:
-        """Crawl from Project Gutenberg"""
+    async def _scrape_gutenberg(self, topic: str, limit: int) -> List[Document]:
+        """Scrape from Project Gutenberg"""
         documents = []
         search_url = f"https://www.gutenberg.org/ebooks/search/?query={topic.replace(' ', '+')}"
         
@@ -51,12 +55,12 @@ class BookCrawler(BaseCrawler):
                             if doc and await self.validate(doc):
                                 documents.append(doc)
             except Exception as e:
-                print(f"Error crawling Gutenberg: {e}")
+                print(f"Error scraping Gutenberg: {e}")
                 
         return documents
     
-    async def _crawl_openlibrary(self, topic: str, limit: int) -> List[Document]:
-        """Crawl from Open Library"""
+    async def _scrape_openlibrary(self, topic: str, limit: int) -> List[Document]:
+        """Scrape from Open Library"""
         documents = []
         api_url = f"https://openlibrary.org/search.json?q={topic.replace(' ', '+')}&limit={limit}"
         
@@ -71,7 +75,7 @@ class BookCrawler(BaseCrawler):
                             if doc and await self.validate(doc):
                                 documents.append(doc)
             except Exception as e:
-                print(f"Error crawling Open Library: {e}")
+                print(f"Error scraping Open Library: {e}")
                 
         return documents
     

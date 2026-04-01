@@ -9,13 +9,14 @@ import os
 import asyncio
 import logging
 
-from app.common.job_models import PreprocessingJob, PreprocessingConfig
+from app.common.job_models import PreprocessingJob
 from app.core.pipeline_engine.handlers.base_handler import BaseHandler
 from app.core.preprocessing.spark_manager import SparkManager
 from app.core.preprocessing.spark_processor import SparkCleaner, SparkNormalizer
 from app.core.preprocessing.deduplicator import DocumentDeduplicator
 from app.core.preprocessing.knowledge_extractor import KnowledgeExtractor
 from app.core.preprocessing.pipeline import PreprocessingPipeline
+
 
 logger = logging.getLogger(__name__)
 
@@ -30,19 +31,19 @@ class PreprocessingHandler(BaseHandler):
         
         try:
             # Get configuration
-            config_dict = job.config or {}
-            config = PreprocessingConfig(**config_dict) if isinstance(config_dict, dict) else config_dict
+            config = job.config 
             
             await self._update_progress(job.job_id, 10, "Loading data")
             
             # Load data with Spark
             spark = await SparkManager.get_session()
-            df = await self._load_data(job.input_path, spark, config)
+
+            df = await self._load_data(config.input_path, spark, config)
             
             await self._update_progress(job.job_id, 30, "Data loaded, starting processing")
             
             # Create preprocessing pipeline
-            pipeline = await PreprocessingPipeline.create(spark, config=config_dict)
+            pipeline = await PreprocessingPipeline.create(spark, config=config)
             
             # Add processors
             if hasattr(config, 'clean_method') and config.clean_method == "standard":
@@ -71,15 +72,15 @@ class PreprocessingHandler(BaseHandler):
             await self._update_progress(job.job_id, 80, "Saving results")
             
             # Save processed data
-            os.makedirs(job.output_path, exist_ok=True)
+            os.makedirs(config.output_path, exist_ok=True)
             
             output_format = getattr(config, 'output_format', 'parquet')
             if output_format == "parquet":
-                processed_df.write.parquet(job.output_path, mode="overwrite")
+                processed_df.write.parquet(config.output_path, mode="overwrite")
             elif output_format == "csv":
-                processed_df.write.csv(job.output_path, mode="overwrite", header=True)
+                processed_df.write.csv(config.output_path, mode="overwrite", header=True)
             elif output_format == "json":
-                processed_df.write.json(job.output_path, mode="overwrite")
+                processed_df.write.json(config.output_path, mode="overwrite")
             
             # Calculate statistics
             input_count = await asyncio.to_thread(df.count)
@@ -90,13 +91,13 @@ class PreprocessingHandler(BaseHandler):
                 "output_rows": output_count,
                 "removed_rows": input_count - output_count,
                 "compression_ratio": (input_count - output_count) / input_count if input_count > 0 else 0,
-                "output_path": job.output_path,
+                "output_path": config.output_path,
                 "output_format": output_format
             })
             
             result = {
                 "success": True,
-                "output_path": job.output_path,
+                "output_path": config.output_path,
                 "metrics": job.metrics,
                 "input_rows": input_count,
                 "output_rows": output_count

@@ -16,6 +16,8 @@ class BaseController(ABC):
         self.orchestrator = orchestrator
         self._jobs: Dict[UUID, Any] = {}  # Use UUID as key
     
+    
+    
     @abstractmethod
     async def add_job(self, **kwargs) -> Dict[str, Any]:
         """

@@ -5,6 +5,7 @@ from .bart_model import BARTModel
 from .gpt_model import GPTModel
 from .vlm_model import VLMModel
 from .vit_model import ViTModel
+from .config import ModelConfig
 
 class ModelFactory:
     """Factory pattern for model creation"""
@@ -18,8 +19,11 @@ class ModelFactory:
     }
     
     @classmethod
-    def get_model(cls, model_type: str, model_name: str, config: Dict[str, Any]) -> BaseModel:
+    def get_model(cls, config: ModelConfig) -> BaseModel:
         """Get model instance by type"""
+        model_type: str = config.model_type
+        model_name: str = config.model_name
+        
         model_class = cls._models.get(model_type)
         if not model_class:
             raise ValueError(f"Unknown model type: {model_type}")

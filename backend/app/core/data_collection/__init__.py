@@ -1,3 +1,3 @@
-from .book_crawler import BookCrawler
+from .book_scraper import BookScraper
 from .web_scraper import WebScraper
-from .crawler_factory import CrawlerFactory
+from .scraper_factory import ScraperFactory

@@ -6,12 +6,10 @@ from transformers import PreTrainedModel, PreTrainedTokenizer
 
 class BaseModel(ABC):
     """Abstract base class for all models"""
-    
-    def __init__(self, model_name: str, config: Dict[str, Any]):
-        self.model_name = model_name
-        self.config = config
-        self.model = None
-        self.tokenizer = None
+    model_name: str
+    config: Dict[str, Any]
+    model: Union[PreTrainedModel, nn.Module]
+    tokenizer: PreTrainedTokenizer
     
     @abstractmethod
     def load_model(self) -> None:

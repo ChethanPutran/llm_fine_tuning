@@ -9,13 +9,16 @@ class WebSocketService {
     this.isConnecting = false;
     this.clientId = this.generateClientId();
     this.pingInterval = null;
+    this.currentSubscription = null;
   }
 
   generateClientId() {
     return `client_${Math.random().toString(36).substr(2, 9)}_${Date.now()}`;
   }
 
-  connect(executionId = null, jobId = null) {
+  connect(options = {}) {
+    const { executionId = null, jobId = null, clientId = null } = options;
+    
     if (this.socket?.readyState === WebSocket.OPEN) {
       console.log('WebSocket already connected');
       return Promise.resolve();
@@ -35,7 +38,7 @@ class WebSocketService {
 
     return new Promise((resolve, reject) => {
       this.isConnecting = true;
-      const wsUrl = this.buildWebSocketUrl(executionId, jobId);
+      const wsUrl = this.buildWebSocketUrl(executionId, jobId, clientId);
       
       try {
         this.socket = new WebSocket(wsUrl);
@@ -45,6 +48,10 @@ class WebSocketService {
           this.reconnectAttempts = 0;
           this.isConnecting = false;
           this.startPingInterval();
+          
+          // Store subscription info
+          this.currentSubscription = { executionId, jobId, clientId };
+          
           this.dispatchEvent('connected', { clientId: this.clientId });
           resolve();
         };
@@ -70,7 +77,7 @@ class WebSocketService {
           this.dispatchEvent('disconnected', { code: event.code, reason: event.reason });
           
           if (event.code !== 1000) { // Normal closure
-            this.attemptReconnect(executionId, jobId);
+            this.attemptReconnect(options);
           }
         };
       } catch (error) {
@@ -80,7 +87,7 @@ class WebSocketService {
     });
   }
 
-  buildWebSocketUrl(executionId, jobId) {
+  buildWebSocketUrl(executionId, jobId, clientId) {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.hostname;
     const port = window.location.port ? `:${window.location.port}` : '';
@@ -91,13 +98,13 @@ class WebSocketService {
     } else if (jobId) {
       endpoint = `/ws/jobs/${jobId}`;
     } else {
-      endpoint = `/ws/client/${this.clientId}`;
+      endpoint = `/ws/client/${clientId || this.clientId}`;
     }
     
     return `${protocol}//${host}${port}${endpoint}`;
   }
 
-  attemptReconnect(executionId, jobId) {
+  attemptReconnect(options) {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       console.error('Max reconnection attempts reached');
       this.dispatchEvent('reconnect_failed', { attempts: this.reconnectAttempts });
@@ -110,7 +117,7 @@ class WebSocketService {
     console.log(`Attempting to reconnect in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
     
     setTimeout(() => {
-      this.connect(executionId, jobId).catch((error) => {
+      this.connect(options).catch((error) => {
         console.error('Reconnection failed:', error);
       });
     }, delay);
@@ -162,6 +169,12 @@ class WebSocketService {
       case 'subscribed':
         this.dispatchEvent('subscribed', data);
         break;
+      case 'unsubscribed':
+        this.dispatchEvent('unsubscribed', data);
+        break;
+      case 'logs':
+        this.dispatchEvent('logs', data);
+        break;
       default:
         this.dispatchEvent('message', data);
     }
@@ -188,6 +201,7 @@ class WebSocketService {
       this.socket = null;
     }
     this.listeners.clear();
+    this.currentSubscription = null;
   }
 
   on(event, callback) {
@@ -218,7 +232,7 @@ class WebSocketService {
     }
   }
 
-  // Convenience methods
+  // ============= Subscription Methods =============
   subscribeToExecution(executionId) {
     return this.send({
       type: 'subscribe',
@@ -235,6 +249,39 @@ class WebSocketService {
     });
   }
 
+  subscribeToClient(clientId) {
+    return this.send({
+      type: 'subscribe',
+      target_type: 'client',
+      target_id: clientId
+    });
+  }
+
+  unsubscribeFromExecution(executionId) {
+    return this.send({
+      type: 'unsubscribe',
+      target_type: 'execution',
+      target_id: executionId
+    });
+  }
+
+  unsubscribeFromJob(jobId) {
+    return this.send({
+      type: 'unsubscribe',
+      target_type: 'job',
+      target_id: jobId
+    });
+  }
+
+  unsubscribeFromClient(clientId) {
+    return this.send({
+      type: 'unsubscribe',
+      target_type: 'client',
+      target_id: clientId
+    });
+  }
+
+  // ============= Action Methods =============
   cancelExecution(executionId) {
     return this.send({
       type: 'cancel',
@@ -261,6 +308,30 @@ class WebSocketService {
       type: 'status',
       job_id: jobId
     });
+  }
+
+  getExecutionLogs(executionId, nodeId = null, tail = 100) {
+    const message = {
+      type: 'logs',
+      execution_id: executionId,
+      tail
+    };
+    if (nodeId) message.node_id = nodeId;
+    return this.send(message);
+  }
+
+  // ============= Helper Methods =============
+  getClientId() {
+    return this.clientId;
+  }
+
+  getConnectionStatus() {
+    return {
+      connected: this.isConnected(),
+      readyState: this.socket?.readyState,
+      clientId: this.clientId,
+      subscription: this.currentSubscription
+    };
   }
 }
 

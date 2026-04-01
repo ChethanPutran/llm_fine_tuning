@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings
-from typing import List
+from pydantic import Field
+from typing import List, Literal
 from enum import Enum
 import os
 from pathlib import Path
@@ -32,6 +33,10 @@ class Settings(BaseSettings):
     # Spark
     SPARK_MASTER: str = "local[*]"
     SPARK_APP_NAME: str = "LLMDataProcessor"
+
+    # Settings file path
+    DEFAULT_SETTINGS_FILE_PATH: str = "./app/config/default_settings.json"
+    BACKUP_DIR: str = "./app/config/backups"
     
     # Model Storage
     MODEL_STORAGE_PATH: str = "./models"
@@ -53,6 +58,19 @@ class Settings(BaseSettings):
     # Deployment Settings (added these fields)
     DEPLOYMENT_PORT: int = 8080
     DEPLOYMENT_WORKERS: int = 4
+
+    # Configuration paths
+    CONFIG_PATH: str = "./app/config"
+    
+    # Model settings
+    MODEL_STORAGE_PATH: str = "./app/models"
+    
+    # Temp path
+    TEMP_PATH: str = "./app/temp"
+    
+    # Backup settings
+    BACKUP_ENABLED: bool = True
+    MAX_BACKUPS: int = 10
     
     class Config:
         env_file = ".env"

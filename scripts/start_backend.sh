@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Activate virtual environment
-source venv/bin/activate
+#source venv/bin/activate
 
 # Suppress Spark warnings
 export SPARK_LOCAL_IP=127.0.0.1

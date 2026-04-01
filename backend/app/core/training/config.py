@@ -1,6 +1,11 @@
+
+from pydantic import BaseModel, Field
+from typing import Dict, Any, Optional
 from dataclasses import dataclass
 from typing import Optional, List
 from enum import Enum
+
+import torch
 
 class OptimizerType(str, Enum):
     ADAM = "adam"
@@ -13,7 +18,7 @@ class SchedulerType(str, Enum):
     CONSTANT = "constant"
 
 @dataclass
-class TrainingConfig:
+class TrainingParameters:
     """Training configuration dataclass"""
     
     # Model parameters
@@ -76,6 +81,8 @@ class TrainingConfig:
     # MLflow tracking
     use_mlflow: bool = True
     mlflow_experiment: str = "llm_finetuning"
+    mlflow_uri: str = "./mlruns"
+    mlflow_params: Dict[str, Any] = Field(default_factory=dict)
     
     def to_dict(self) -> dict:
         """Convert config to dictionary"""
@@ -95,26 +102,17 @@ class TrainingConfig:
             'output_dir': self.output_dir
         }
 
-@dataclass
-class FinetuningConfig(TrainingConfig):
-    """Fine-tuning specific configuration"""
+
+
+class TrainingConfig(BaseModel):
+    """Training configuration model"""
+    device: str = Field(default="cuda" if torch.cuda.is_available() else "cpu", description="Device for training")
+    error_function: str = Field(default="cross_entropy", description="Loss function for training")
+    optimizer: str = Field(default="adamw", description="Optimizer for training")
+    batch_size: int = Field(default=16, ge=1, le=128, description="Batch size for training")
+    learning_rate: float = Field(default=5e-5, ge=1e-6, le=1e-3, description="Learning rate for training")
+    num_epochs: int = Field(default=3, ge=1, le=100, description="Number of epochs for training")
+    max_length: int = Field(default=512, ge=128, le=4096, description="Maximum sequence length for training")
+    additional_params: TrainingParameters = Field(default_factory=TrainingParameters, description="Additional parameters for training")
+    output_model_path: Optional[str] = None
     
-    # Fine-tuning strategy
-    strategy: str = "full"  # full, lora, adapter, prefix_tuning
-    
-    # LoRA specific
-    lora_r: int = 8
-    lora_alpha: int = 32
-    lora_dropout: float = 0.1
-    lora_target_modules: List[str] = None
-    
-    # Adapter specific
-    adapter_bottleneck_size: int = 64
-    
-    # Prefix tuning specific
-    prefix_length: int = 10
-    prefix_projection: bool = True
-    
-    def __post_init__(self):
-        if self.lora_target_modules is None:
-            self.lora_target_modules = ['q_proj', 'v_proj']

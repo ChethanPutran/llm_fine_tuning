@@ -1,0 +1,111 @@
+{
+  "general": {
+    "app_name": "ML Pipeline Platform",
+    "version": "1.0.0",
+    "debug_mode": "False",
+    "log_level": "INFO",
+    "timezone": "UTC",
+    "max_concurrent_jobs": 10,
+    "default_priority": "NORMAL"
+  },
+  "resources": {
+    "cpu_limit": 8,
+    "memory_limit_gb": 32,
+    "gpu_limit": 2,
+    "storage_limit_gb": 100,
+    "temp_cleanup_days": 7
+  },
+  "data_collection": {
+    "default_limit": 100,
+    "max_limit": 10000,
+    "default_search_engine": "google",
+    "supported_sources": ["web", "books", "news", "academic", "social_media"],
+    "rate_limit_per_minute": 60,
+    "timeout_seconds": 300
+  },
+  "preprocessing": {
+    "default_batch_size": 32,
+    "max_file_size_mb": 1024,
+    "supported_formats": [
+      "csv",
+      "json",
+      "parquet",
+      "txt",
+      "html",
+      "pdf",
+      "docx"
+    ],
+    "output_formats": ["parquet", "csv", "json", "avro"],
+    "max_parallel_jobs": 4
+  },
+  "tokenization": {
+    "default_vocab_size": 32000,
+    "min_vocab_size": 1000,
+    "max_vocab_size": 100000,
+    "supported_types": ["bpe", "wordpiece", "sentencepiece"],
+    "cache_enabled": true
+  },
+  "training": {
+    "default_epochs": 3,
+    "default_batch_size": 32,
+    "default_learning_rate": 0.001,
+    "mixed_precision": true,
+    "gradient_checkpointing": false,
+    "checkpoint_frequency": 1000,
+    "early_stopping_patience": 3
+  },
+  "finetuning": {
+    "strategies": ["full_finetune", "lora", "adapter", "prefix_tuning"],
+    "default_strategy": "lora",
+    "lora_r": 8,
+    "lora_alpha": 32,
+    "lora_dropout": 0.1
+  },
+  "optimization": {
+    "types": ["pruning", "quantization", "distillation"],
+    "default_type": "quantization",
+    "pruning_target": 0.3,
+    "quantization_bits": 8,
+    "distillation_temperature": 3.0
+  },
+  "deployment": {
+    "targets": ["local", "cloud", "edge"],
+    "default_target": "local",
+    "frameworks": ["torchserve", "tensorflow-serving", "onnx"],
+    "default_framework": "torchserve",
+    "health_check_interval": 30,
+    "auto_scale": false
+  },
+  "pipeline": {
+    "default_priority": "NORMAL",
+    "max_nodes": 50,
+    "timeout_seconds": 3600,
+    "retry_policy": {
+      "max_retries": 3,
+      "delay_seconds": 5,
+      "backoff_multiplier": 2
+    }
+  },
+  "storage": {
+    "data_path": "./data",
+    "model_path": "./models",
+    "temp_path": "./temp",
+    "backup_enabled": true,
+    "backup_interval_days": 1,
+    "max_backups": 10
+  },
+  "security": {
+    "api_key_required": false,
+    "cors_origins": ["*"],
+    "rate_limit_per_minute": 100,
+    "max_request_size_mb": 100
+  },
+  "notifications": {
+    "email_enabled": false,
+    "email_smtp_host": "",
+    "email_smtp_port": 587,
+    "email_from": "",
+    "webhook_enabled": false,
+    "webhook_url": ""
+  }
+}

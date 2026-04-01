@@ -2,13 +2,14 @@ from typing import Dict, Any, Optional, List
 from .base import FinetuningStrategy, FinetuningTask
 from ..models.base import BaseModel
 from ..training.trainer import Trainer
+from ..training.config import TrainingConfig
 import torch
 
 class FinetuningPipeline:
     """Pipeline for fine-tuning models"""
     
     def __init__(self, model: BaseModel, strategy: FinetuningStrategy,
-                 task: FinetuningTask, trainer_config: Dict[str, Any]):
+                 task: FinetuningTask, trainer_config:TrainingConfig):
         self.model = model
         self.strategy = strategy
         self.task = task
