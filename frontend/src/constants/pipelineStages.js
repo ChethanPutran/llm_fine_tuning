@@ -69,14 +69,28 @@ export const STAGE_DEFINITIONS = [
     statusApi: apiService.getFinetuningStatus,
     fields: [
 
-      { key: "task_category", label: "Task Category", type: "select", options: ["NLP"], default: "NLP", fetch_endpoint: apiService.getTaskCatergories },
-      { key: "model_type", label: "Model Type", type: "select", options: ["bert", "gpt", "bart"], default: "bert", required: true , fetch_endpoint: apiService.getTaskModels},
-      { key: "model_name", label: "Model Name", type: "text", placeholder: "bert-base-uncased", required: true },
+      { key: "task_category", label: "Task Category", type: "select", options: ["NLP"], default: "NLP",
+         fetch_endpoint: apiService.getTaskCatergories },
+      { key: "task", label: "Task", type: "select", options: ["classification", "summarization", "qa"],
+         default: "classification", dependsOn: "task_category",
+          fetch_endpoint: apiService.getTasksByCategory },
+      { key: "model_type", label: "Model Type", type: "select", options: ["bert", "gpt", "bart"],
+         default: "bert", required: true ,
+          fetch_endpoint: apiService.getTaskModels,
+          dependsOn: "task"
+      },
+      // { key: "model_name", label: "Model Name", type: "text", 
+      //   placeholder: "bert-base-uncased", required: true , 
+      //   dependsOn: "model_type"
+      // },
       { key: "strategy", label: "Strategy", type: "select", options: ["full", "lora", "adapter"], default: "lora" },
-      { key: "dataset", label: "Dataset", type: "select", options: ["general_instruction_tuning", "mathematical_reasoning", "code_generation"], default: "general_instruction_tuning", required: true , fetch_endpoint: apiService.getTaskDatasets}
+      { key: "dataset", label: "Dataset", type: "select", 
+        options: ["general_instruction_tuning", "mathematical_reasoning", "code_generation"], 
+        default: "general_instruction_tuning", required: true , fetch_endpoint: apiService.getTaskDatasets, 
+        dependsOn: "task"  }
     ],
     advancedFields: [
-      { key: "task", label: "Task", type: "select", options: ["classification", "summarization", "qa"], default: "classification" },
+      
       { key: "learning_rate", label: "Learning Rate", type: "number", step: 0.00001, default: 0.00002 },
       { key: "num_epochs", label: "Epochs", type: "number", min: 1, max: 20, default: 3 },
       { key: "batch_size", label: "Batch Size", type: "select", options: ["8", "16", "32", "64"], default: "16" }

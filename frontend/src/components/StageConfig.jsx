@@ -25,6 +25,9 @@ const StageConfig = ({ stage, onConfigChange, config = {} }) => {
   const [errors, setErrors] = useState({});
   const [initialized, setInitialized] = useState(false);
 
+  // Add a state for fetched options
+  const [asyncOptions, setAsyncOptions] = useState({});
+
   // Memoize all fields to prevent recalculation
   const allFields = useMemo(() => {
     return [...(stage.fields || []), ...(stage.advancedFields || [])];
@@ -67,6 +70,49 @@ const StageConfig = ({ stage, onConfigChange, config = {} }) => {
     return null;
   }, []);
 
+
+  useEffect(() => {
+  let isMounted = true;
+
+  const updateDependentOptions = async () => {
+    // 1. Identify fields that have a fetch_endpoint
+    const dynamicFields = allFields.filter(f => f.fetch_endpoint);
+
+    for (const field of dynamicFields) {
+      // 2. Identify what this field depends on (e.g., field.dependsOn = 'previous_field_key')
+      // If your schema doesn't have 'dependsOn', you might be using the whole config
+      const dependencyValue = field.dependsOn ? config[field.dependsOn] : null;
+
+      // 3. Only fetch if the dependency actually has a value (if required)
+      if (field.dependsOn && !dependencyValue) {
+        continue; 
+      }
+
+      try {
+        console.log(`Fetching options for ${field.key} with dependency value:`, dependencyValue);
+        console.log(`Current config passed to fetcher:`, config);
+        // Pass the current config (or specific dependency) to the fetcher
+        const data = await field.fetch_endpoint(config); 
+        console.log(`Fetched options for ${field.key}:`, data);
+        if (isMounted) {
+          setAsyncOptions(prev => ({
+            ...prev,
+            [field.key]: data
+          }));
+        }
+      } catch (err) {
+        console.error(`Error fetching for ${field.key}:`, err);
+      }
+    }
+  };
+
+  updateDependentOptions();
+
+  return () => { isMounted = false; };
+  
+  // CRITICAL: We only re-run this when the values in 'config' change
+  // We use JSON.stringify(config) or specific keys to avoid reference-check loops
+}, [JSON.stringify(config), allFields]);
   
   // Validate all fields when config changes
   useEffect(() => {
@@ -89,40 +135,36 @@ const StageConfig = ({ stage, onConfigChange, config = {} }) => {
     onConfigChange({ ...config, [key]: value });
   }, [config, onConfigChange, validateField]);
 
-
-  const createOptions = useCallback(async (field) => {
-    console.log("Creating options for field:", field.key);
-    if (field.fetch_endpoint) {
-      const options = await field.fetch_endpoint();
-      console.log(`Fetched options for ${field.key}:`, options);
-      return ["Option1", "Option2"]; // Placeholder until real options are fetched
-    }
-    return ["Option1", "Option2"];
-  }, []);
   const renderField = useCallback((field) => {
     const value = config[field.key];
     const error = errors[field.key];
     
     switch (field.type) {
+      
       case 'select':
-        return (
-          <FormControl fullWidth key={field.key} error={!!error} sx={{ mb: 2 }}>
-            <InputLabel>{field.label}</InputLabel>
-            <Select
-              value={value !== undefined ? value : (field.default || '')}
-              onChange={(e) => handleChange(field.key, e.target.value, field)}
-              label={field.label}
-            >
-              {createOptions(field).then(options =>
-              options?.map(option => (
-                <MenuItem key={option} value={option}>
-                  {option}
-                </MenuItem>
-              )))}
-            </Select>
-            {error && <Typography variant="caption" color="error">{error}</Typography>}
-          </FormControl>
-        );
+          const options = asyncOptions[field.key] || [];
+          const isDisabled = field.dependsOn && !config[field.dependsOn];
+
+          return (
+            <FormControl fullWidth key={field.key} disabled={isDisabled}>
+              <InputLabel>{field.label}</InputLabel>
+              <Select
+                value={config[field.key] || ''}
+                onChange={(e) => handleChange(field.key, e.target.value, field)}
+                label={field.label}
+              >
+                {options.length > 0 ? (
+                  options.map(option => (
+                    <MenuItem key={option} value={option}>{option}</MenuItem>
+                  ))
+                ) : (
+                  <MenuItem disabled>
+                    {isDisabled ? `Select ${field.dependsOn} first` : "Loading..."}
+                  </MenuItem>
+                )}
+              </Select>
+            </FormControl>
+          );
         
       case 'text':
         return (
