@@ -1,2 +1,10 @@
 *.zip
 frontend/node_modules
+backend/venv
+backend/__pycache__
+backend/.env
+backend/.env.example
+backend/.venv
+backend/requirements.txt --- IGNORE ---
+.vscode/
+.env.example

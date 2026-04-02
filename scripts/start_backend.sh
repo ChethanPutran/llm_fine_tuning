@@ -26,4 +26,4 @@ cd backend
 # python app/main.py
 
 # Or using uvicorn directly
-python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --log-level info
+python3 -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --log-level info

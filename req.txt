@@ -1,0 +1,6 @@
+
+# Node.js version:
+node "v24.14.1".
+
+# npm version:
+npm "11.11.0".
