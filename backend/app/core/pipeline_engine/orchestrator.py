@@ -65,7 +65,10 @@ class PipelineOrchestrator:
         self.retry_handler = RetryHandler() 
         
         # Global pipeline builder - users add nodes to this
-        self.pipeline_builder = PipelineBuilder()
+        self.pipeline_builder = PipelineBuilder(
+            name="Global Pipeline",
+            description="Pipeline builder for user-defined pipelines",
+        )
         
         # Pipeline executor (passes retry_handler to handle retries)
         self.pipeline_executor = PipelineExecutor(
@@ -132,7 +135,7 @@ class PipelineOrchestrator:
     async def validate_pipeline(self, pipeline_json: Dict[str, Any]) -> bool:
         """Validate a pipeline definition without executing it"""
         validator = await DAGValidator.from_dict(pipeline_json)
-        is_valid, errors = await validator.validate()
+        is_valid, errors = validator.validate()
         if not is_valid:
             raise ValueError(f"Invalid pipeline definition: {errors}")
         return is_valid
@@ -338,18 +341,17 @@ class PipelineOrchestrator:
         logger.info(f"Job {job.job_id} registered with type {job.job_type.value}")
         return job.job_id
     
-    async def cancel_job(self, job_id: UUID) -> bool:
-        """Cancel a job by ID"""
+    async def remove_job(self, job_id: UUID) -> bool:
+        """Remove a job by ID"""
         job = self._jobs.get(job_id)
         if not job:
-            logger.error(f"Job {job_id} not found for cancellation")
+            logger.error(f"Job {job_id} not found for removal")
             return False
         # Cancel execution if running
         if job.execution_id:
             await self.cancel_execution(job.execution_id)
 
         job.mark_removed()
-        del self._jobs[job_id]
         await manager.notify_job_update(str(job_id), {
             "status": "removed",
             "message": "Job removed by user"
@@ -403,7 +405,7 @@ class PipelineOrchestrator:
             "total": total,
             "limit": limit,
             "offset": offset,
-            "jobs": [job.model_dump() for job in paginated_jobs]
+            "jobs": [job for job in paginated_jobs]
         }
     
     # ==================== Pipeline Builder Operations ====================
@@ -665,15 +667,21 @@ class PipelineOrchestrator:
         return sum(durations) / len(durations) if durations else 0.0
     
     # ==================== Statistics Methods ====================
-    async def get_statistics(self, user_id: Optional[str] = None) -> Dict[str, Any]:
+    async def get_statistics(self, job_type: Optional[str] = None, user_id: Optional[str] = None) -> Dict[str, Any]:
         """Get execution statistics"""
+        # jobs = [j for j in self._jobs.values() if j.job_type.value == job_type]
         stats = {
-            "total_executions": len(self.active_executions),
-            "running_executions": sum(1 for ctx in self.active_executions.values() if ctx.status == "running"),
-            "completed_executions": sum(1 for ctx in self.active_executions.values() if ctx.status == "completed"),
-            "failed_executions": sum(1 for ctx in self.active_executions.values() if ctx.status == "failed"),
-            "average_duration": self._calculate_average_duration(user_id)
-        }
+            "total_jobs": len(self._jobs),
+            "in_progress_jobs": sum(1 for job in self.active_jobs.values() if job.status == "in_progress"),
+            "completed_jobs": sum(1 for ctx in self.active_executions.values() if ctx.status == "completed"),
+            "failed_jobs": sum(1 for ctx in self.active_executions.values() if ctx.status == "failed"),
+            "cancelled_jobs": sum(1 for ctx in self.active_executions.values() if ctx.status == "cancelled"),
+            "removed_jobs": sum(1 for ctx in self.active_executions.values() if ctx.status == "removed"),
+            "average_duration": await self._calculate_average_duration(user_id),
+            "status": "success",
+            "message": "Statistics retrieved successfully",
+            "error": None,
+            "tags": [],}
         return stats
     # ==================== Lifecycle Methods ====================
       

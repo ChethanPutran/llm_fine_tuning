@@ -1,20 +1,12 @@
 # app/controllers/settings_controller.py
 
-from typing import Dict, Any, Optional, List
-from uuid import UUID, uuid4
+from typing import Dict, Any
 import logging
-import json
-import os
-import shutil
-from datetime import datetime, timezone
-from pathlib import Path
+from datetime import datetime
 
-from fastapi import FastAPI
-
-from app.core.config import settings
-from app.api.websocket import manager
 from app.core.datasets.main import Datasets
 from app.core.models.main import Models
+from app.core.tasks import Tasks, TaskCategory, TaskType
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +16,22 @@ class GeneralController:
 
     def __init__(self, orchestrator):
         self.orchestrator = orchestrator
+
+    def get_tasks_by_category(self, category_str: str):
+        """Get tasks by category"""
+        return Tasks.get_tasks_by_category(TaskCategory(category_str))
+
+    def get_task_categories(self):
+        """Get all available task categories"""
+        return Tasks.get_task_categories()
+
+    def get_task_datasets(self, category_str: str):
+        """Get datasets for a specific task type"""
+        return Tasks.get_task_datasets(TaskType(category_str))
+
+    def get_task_models(self, category_str: str):
+        """Get models for a specific task type"""
+        return Tasks.get_task_models(TaskType(category_str))
 
     def get_datasets(self):
         """Get all available datasets"""

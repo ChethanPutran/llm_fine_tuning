@@ -68,10 +68,12 @@ export const STAGE_DEFINITIONS = [
     startApi: apiService.startFinetuning,
     statusApi: apiService.getFinetuningStatus,
     fields: [
-      { key: "model_type", label: "Model Type", type: "select", options: ["bert", "gpt", "bart"], default: "bert", required: true },
+
+      { key: "task_category", label: "Task Category", type: "select", options: ["NLP"], default: "NLP", fetch_endpoint: apiService.getTaskCatergories },
+      { key: "model_type", label: "Model Type", type: "select", options: ["bert", "gpt", "bart"], default: "bert", required: true , fetch_endpoint: apiService.getTaskModels},
       { key: "model_name", label: "Model Name", type: "text", placeholder: "bert-base-uncased", required: true },
       { key: "strategy", label: "Strategy", type: "select", options: ["full", "lora", "adapter"], default: "lora" },
-      { key: "dataset", label: "Dataset", type: "select", options: ["general_instruction_tuning", "mathematical_reasoning", "code_generation"], default: "general_instruction_tuning", required: true }
+      { key: "dataset", label: "Dataset", type: "select", options: ["general_instruction_tuning", "mathematical_reasoning", "code_generation"], default: "general_instruction_tuning", required: true , fetch_endpoint: apiService.getTaskDatasets}
     ],
     advancedFields: [
       { key: "task", label: "Task", type: "select", options: ["classification", "summarization", "qa"], default: "classification" },

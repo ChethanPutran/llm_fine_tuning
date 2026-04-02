@@ -226,7 +226,6 @@ async def get_pipeline_statistics(
 
 @router.get("/templates", response_model=TemplateListResponse)
 async def get_pipeline_templates(
-    request: RequestBase = Field(..., description="Request model for pipeline templates"),
     controller: PipelineController = Depends(get_pipeline_controller)
 ):
     """
@@ -238,7 +237,11 @@ async def get_pipeline_templates(
         templates = await controller.get_pipeline_templates()
         return TemplateListResponse(
             templates=templates,
-            **request.dict()
+            user_id=None,
+            status="success",
+            message="Available pipeline templates retrieved successfully",
+            error=None,
+            tags=[]
             )
     except Exception as e:
         logger.error(f"Failed to get pipeline templates: {e}")
@@ -248,7 +251,6 @@ async def get_pipeline_templates(
 @router.get("/templates/{template_name}", response_model=TemplateListResponse)
 async def get_pipeline_template(
     template_name: str,
-    request: RequestBase = Field(..., description="Request model for pipeline template"),
     controller: PipelineController = Depends(get_pipeline_controller)
 ):
     """
@@ -263,7 +265,11 @@ async def get_pipeline_template(
         
         return TemplateListResponse(
             templates={template_name: templates[template_name]},
-            **request.dict()
+            user_id=None,
+            status="success",
+            message="Pipeline template retrieved successfully",
+            error=None,
+            tags=[]
         )
     except HTTPException:
         raise
@@ -296,7 +302,6 @@ async def instantiate_template(
 @router.post("/validate", response_model=ValidationResponse)
 async def validate_pipeline(
     pipeline_json: Dict[str, Any],
-    request: RequestBase = Field(..., description="Request model for pipeline validation"),
     controller: PipelineController = Depends(get_pipeline_controller)
 ):
     """
@@ -310,12 +315,21 @@ async def validate_pipeline(
         return ValidationResponse(
             valid=True,
             message="Pipeline definition is valid",
-            **request.dict()
+            user_id=None,
+            status="success",
+            errors=None,
+            tags=[],
+            nodes=[],
+            edges=[]
         )
     except Exception as e:
         return ValidationResponse(
             valid=False,
             message="Pipeline definition is invalid",
-            error=str(e),
-            **request.dict()
+            errors=[str(e)],
+            user_id=None,
+            status="error",
+            tags=[],
+            nodes=[],
+            edges=[]
         )

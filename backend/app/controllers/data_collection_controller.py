@@ -1,13 +1,11 @@
 # app/controllers/data_collection_controller.py
 
 from typing import Dict, Any, Optional, List
-from uuid import UUID
 import logging
 
-from app.api.models import JobResponse
-from app.common.job_models import JobStatus, JobFactory, DataCollectionConfig
+
+from app.common.job_models import JobFactory, DataCollectionConfig
 from app.controllers.base_controller import BaseController
-from app.api.websocket import manager
 from app.core.pipeline_engine.models import NodeType
 
 logger = logging.getLogger(__name__)

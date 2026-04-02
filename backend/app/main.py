@@ -1,10 +1,9 @@
 # app/main.py
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
-from typing import Dict, Any
 from datetime import datetime
 from app.core.config import settings
 from app.core.exceptions import PlatformException
@@ -49,7 +48,7 @@ async def lifespan(app: FastAPI):
     logger.info("Pipeline orchestrator initialized and started")
     
     # Initialize database connections
-    await initialize_database(app)
+    # await initialize_database(app)
     
     # Initialize Spark session
     # await initialize_spark(app)
@@ -220,8 +219,8 @@ async def load_configurations(app: FastAPI):
                     app.state.configs[config_file.stem] = config
                 logger.info(f"Loaded configuration: {config_file.stem}")
             except Exception as e:
-                raise e
                 logger.error(f"Failed to load config {config_file}: {e}")
+                raise e
         
         logger.info(f"Loaded {len(app.state.configs)} configuration files")
     else:

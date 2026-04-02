@@ -606,6 +606,46 @@ class APIService {
       data: { key, value }
     });
   }
+
+
+  // =========================== General routes ===========================
+  getTaskCatergories() {
+    return this.request('/tasks/categories');
+  }
+  getTasksByCategory(category) {
+    return this.request('/tasks', {
+      params: { category }
+    });
+  }
+  getTaskDatasets(taskId) {
+    return this.request(`/tasks/datasets/${taskId}`);
+  }
+  getTaskModels(taskId) {
+    return this.request(`/tasks/models/${taskId}`);
+  }
+  getUserInfo() {
+    return this.request('/user/info');
+  }
+
+  getSystemStatus() {
+    return this.request('/system/status');
+  }
+
+  getSystemMetrics() {
+    return this.request('/system/metrics');
+  }
+
+  getLogs(tail = 100) {
+    return this.request('/system/logs', {
+      params: { tail }
+    });
+  }
+  getAvailableResources() {
+    return this.request('/system/resources');
+  }
+  getResourceUsage() {
+    return this.request('/system/resource-usage');
+  }
 }
 
 export const apiService = new APIService();

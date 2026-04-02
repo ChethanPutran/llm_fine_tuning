@@ -89,6 +89,16 @@ const StageConfig = ({ stage, onConfigChange, config = {} }) => {
     onConfigChange({ ...config, [key]: value });
   }, [config, onConfigChange, validateField]);
 
+
+  const createOptions = useCallback(async (field) => {
+    console.log("Creating options for field:", field.key);
+    if (field.fetch_endpoint) {
+      const options = await field.fetch_endpoint();
+      console.log(`Fetched options for ${field.key}:`, options);
+      return ["Option1", "Option2"]; // Placeholder until real options are fetched
+    }
+    return ["Option1", "Option2"];
+  }, []);
   const renderField = useCallback((field) => {
     const value = config[field.key];
     const error = errors[field.key];
@@ -103,11 +113,12 @@ const StageConfig = ({ stage, onConfigChange, config = {} }) => {
               onChange={(e) => handleChange(field.key, e.target.value, field)}
               label={field.label}
             >
-              {field.options?.map(option => (
+              {createOptions(field).then(options =>
+              options?.map(option => (
                 <MenuItem key={option} value={option}>
                   {option}
                 </MenuItem>
-              ))}
+              )))}
             </Select>
             {error && <Typography variant="caption" color="error">{error}</Typography>}
           </FormControl>

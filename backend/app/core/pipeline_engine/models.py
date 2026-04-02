@@ -3,7 +3,7 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 from uuid import UUID, uuid4
 from pydantic import BaseModel, Field
-from app.common.node_models import NodeType, NodeStatus
+from app.common.enums import NodeType, NodeStatus
 
 class NodeConfig(BaseModel):
     """Configuration for a pipeline node"""

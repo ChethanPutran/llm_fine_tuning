@@ -1,5 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
+from uuid import UUID, uuid4
+
 from app.common.job_models import JobPriority
 from app.common.job_models import JobPriority
 from app.core.data_collection.config import DataCollectionConfig
@@ -36,7 +38,7 @@ class StartTrainingRequest(RequestBase):
 
 class StartFinetuningRequest(RequestBase):
     """Request model for starting fine-tuning"""
-    
+    job_id: UUID = Field(default_factory=uuid4, description="Job identifier")
     base_model_config: ModelConfig = Field(default_factory=ModelConfig, description="Base model configuration")
     dataset_config: DatasetConfig = Field(default_factory=DatasetConfig, description="Dataset configuration")
     config: FinetuningConfig = Field(default_factory=FinetuningConfig, description="Fine-tuning configuration")
@@ -80,25 +82,25 @@ class CreatePipelineJobRequest(RequestBase):
 class ResponseBase(BaseModel):
     """Base request model with common fields"""
     tags: Optional[List[str]] = Field(None, description="Optional tags for categorization")
-    user_id: Optional[str] = Field(None, description="User ID who triggered the request")
+    user_id: Optional[UUID] = Field(None, description="User ID who triggered the request")
     status: str = Field(..., description="Current status of the fine-tuning job")
     message: Optional[str] = Field(default=None, description="Additional information about the job status")
     error: Optional[str] = Field(default=None, description="Error message if the job failed")
 
 class JobCreationResponse(ResponseBase):
     """Response model for job creation"""
-    job_id: str = Field(..., description="Job identifier")
+    job_id: UUID = Field(..., description="Job identifier")
 
 class JobStatusResponse(ResponseBase):
     """Response model for job status"""
-    job_id: str = Field(..., description="Job identifier")
+    job_id: UUID = Field(..., description="Job identifier")
     job_type: str = Field(..., description="Type of the job (e.g., training, fine-tuning, data collection)")
     progress: Optional[float] = Field(None, description="Progress percentage of the job")
 
 class ExecutionStatusResponse(ResponseBase):
     """Response model for execution status"""
-    execution_id: str = Field(..., description="Execution identifier")
-    job_id: str = Field(..., description="Associated job identifier")
+    execution_id: UUID = Field(..., description="Execution identifier")
+    job_id: UUID = Field(..., description="Associated job identifier")
     progress: Optional[float] = Field(None, description="Progress percentage of the execution")
 
 class ListJobsResponse(ResponseBase):
@@ -116,6 +118,10 @@ class StatisticsResponse(ResponseBase):
     completed_jobs: int = Field(..., description="Number of completed jobs")
     failed_jobs: int = Field(..., description="Number of failed jobs")
     in_progress_jobs: int = Field(..., description="Number of jobs in progress")
+    cancelled_jobs: int = Field(..., description="Number of cancelled jobs")
+    removed_jobs: int = Field(..., description="Number of removed jobs")
+    average_duration: Optional[float] = Field(None, description="Average duration of completed jobs in seconds")
+
 
 class MetricResponse(ResponseBase):
     """Response model for metric retrieval"""
@@ -135,7 +141,7 @@ class PipelineExecutionResponse(ExecutionStatusResponse):
     """Response model for pipeline execution"""
     pass
 
-class Template:
+class Template(ResponseBase):
     """Response model for template retrieval"""
     template_id: str = Field(..., description="Identifier for the retrieved template")
     content: Dict[str, Any] = Field(..., description="Content of the template")

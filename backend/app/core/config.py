@@ -114,5 +114,5 @@ if settings.DEBUG:
     print(f"✓ Configuration loaded successfully")
     print(f"  Environment: {settings.ENVIRONMENT}")
     print(f"  Debug mode: {settings.DEBUG}")
-    print(f"  Database: {settings.DATABASE_URL}")
-    print(f"  Model storage: {settings.MODEL_STORAGE_PATH}")
+    # print(f"  Database: {settings.DATABASE_URL}")
+    # print(f"  Model storage: {settings.MODEL_STORAGE_PATH}")

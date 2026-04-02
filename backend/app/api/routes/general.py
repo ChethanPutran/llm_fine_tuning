@@ -12,7 +12,8 @@ from app.controllers.general_controller import GeneralController
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/data-collection", tags=["data-collection"])
+router = APIRouter( tags=["General"])
+
 from app.api.websocket import manager 
 
 
@@ -71,6 +72,93 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str,
         logger.info(f"Client {client_id} disconnected")
 
 
+# Root endpoint
+@router.get("/")
+async def root():
+    """
+    Root endpoint with API information
+    """
+    return {
+        "name": settings.APP_NAME,
+        "version": "1.0.0",
+        "description": "LLM Fine-tuning Platform",
+        "docs_url": "/docs",
+        "api_prefix": settings.API_V1_PREFIX,
+        "websocket_url": "/ws/{client_id}",
+        "endpoints": {
+            "health": "/health",
+            "system_info": "/system/info",
+            "models": "/tasks/models/{category}",
+            "datasets": "/task/datasets/{task_type}"
+        }
+    }
+
+    
+@router.get("/tasks/categories")
+async def list_available_tasks(
+        controller: GeneralController = Depends(get_general_controller)
+):
+    """
+    List available finetuning tasks
+    """
+    try:
+        tasks = controller.get_task_categories()
+        return {"categories": tasks}
+    except Exception as e:
+        logger.error(f"Failed to list available tasks: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    
+@router.get("/tasks/{category}")
+async def list_available_task_types(
+        category: str,
+        controller: GeneralController = Depends(get_general_controller)
+):
+    """
+    List available finetuning task types
+    """
+    try:
+        tasks = controller.get_tasks_by_category(category)
+        return {"tasks": tasks}
+    except Exception as e:
+        logger.error(f"Failed to list available tasks: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Available datasets endpoint
+@router.get("/task/datasets/{task_type}")
+async def list_available_datasets(
+        task_type: str,
+        controller: GeneralController = Depends(get_general_controller)
+):
+    """
+    List available datasets
+    """
+    try:
+        datasets = controller.get_task_datasets(task_type)
+        return {"datasets": datasets}
+    except Exception as e:
+        logger.error(f"Failed to list available datasets: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Available models endpoint
+@router.get("/tasks/models/{category}")
+async def list_available_models(
+    category: str,
+        controller: GeneralController = Depends(get_general_controller)
+):
+    """
+    List all available pre-trained models
+    """
+    try:
+        models = controller.get_task_models(category)
+        return {
+            "models": models
+            }
+    except Exception as e:
+        logger.error(f"Failed to list available models: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    
+
+
 # Health check endpoint
 @router.get("/health")
 async def health_check():
@@ -107,56 +195,3 @@ async def system_info():
         "workers": settings.PIPELINE_WORKERS
     }
 
-
-# Root endpoint
-@router.get("/")
-async def root():
-    """
-    Root endpoint with API information
-    """
-    return {
-        "name": settings.APP_NAME,
-        "version": "1.0.0",
-        "description": "LLM Fine-tuning Platform",
-        "docs_url": "/docs",
-        "api_prefix": settings.API_V1_PREFIX,
-        "websocket_url": "/ws/{client_id}",
-        "endpoints": {
-            "health": "/health",
-            "system_info": "/system/info",
-            "models": "/models/available",
-            "datasets": "/datasets/available"
-        }
-    }
-
-# Available models endpoint
-@router.get("/models/available")
-async def list_available_models(
-        controller: GeneralController = Depends(get_general_controller)
-):
-    """
-    List all available pre-trained models
-    """
-    try:
-        models = controller.get_models()
-        return {"models": models}
-    except Exception as e:
-        logger.error(f"Failed to list available models: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-    
-
-
-# Available datasets endpoint
-@router.get("/datasets/available")
-async def list_available_datasets(
-        controller: GeneralController = Depends(get_general_controller)
-):
-    """
-    List available datasets
-    """
-    try:
-        datasets = controller.get_datasets()
-        return {"datasets": datasets}
-    except Exception as e:
-        logger.error(f"Failed to list available datasets: {e}")
-        raise HTTPException(status_code=500, detail=str(e))

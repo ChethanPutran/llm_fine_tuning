@@ -99,7 +99,7 @@ async def cancel_training_job(
     controller: TrainingController = Depends(get_training_controller)
 ):
     """Cancel a training job"""
-    cancelled = await controller.cancel_job(job_id)
+    cancelled = await controller.remove_job(job_id)
     if cancelled:
         return JobStatusResponse(**cancelled)
     raise HTTPException(status_code=400, detail="Job cannot be cancelled or not found")
@@ -146,12 +146,12 @@ async def get_training_logs(
     if isinstance(logs, list) and len(logs) > tail:
         logs = logs[-tail:]
     
-    return LogsResponse(job_id=job_id, logs=logs, tail=tail)
+    return LogsResponse(logs=logs, tail=tail,user_id=None,
+                        status="success", message="Logs retrieved successfully", error=None, tags=[])
 
 
 @router.get("/strategies", response_model=ListResourcesResponse)
 async def get_strategies(
-    request: RequestBase = Depends(),
 ):
     """Get available fine-tuning strategies"""
     return ListResourcesResponse(
@@ -160,13 +160,17 @@ async def get_strategies(
             {"name": "lora", "description": "Low-Rank Adaptation strategy"},
             {"name": "adapter", "description": "Adapter strategy"},
             {"name": "prefix_tuning", "description": "Prefix tuning strategy"}
-        ],**request.dict()
+        ],
+        user_id=None,
+        status="success",
+        message="Available strategies retrieved successfully",
+        error=None,
+        tags=[]
     )
 
 
 @router.get("/tasks", response_model=ListResourcesResponse)
 async def get_tasks(
-    request: RequestBase = Depends(),
 ):
     """Get available fine-tuning tasks"""
     return ListResourcesResponse(
@@ -175,7 +179,12 @@ async def get_tasks(
             {"name": "summarization", "description": "Summarization task"},
             {"name": "qa", "description": "Question Answering task"},
             {"name": "generation", "description": "Text Generation task"}
-        ],**request.dict()
+        ],
+        user_id=None,
+        status="success",
+        message="Available tasks retrieved successfully",
+        error=None,
+        tags=[]
     )
 
 

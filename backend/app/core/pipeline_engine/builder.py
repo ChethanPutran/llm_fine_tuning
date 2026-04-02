@@ -9,22 +9,9 @@ from .models import (
     Pipeline, PipelineNode, PipelineEdge, NodeType, 
     NodeConfig, VisualNode, VisualEdge
 )
-from .models import Pipeline
+from .models import Pipeline, NodePosition
 
     
-class NodePosition:
-    """Represents node position in visual layout"""
-    
-    def __init__(self, x: float = 0, y: float = 0):
-        self.x = x
-        self.y = y
-    
-    def to_dict(self) -> Dict[str, float]:
-        return {"x": self.x, "y": self.y}
-    
-    @classmethod
-    def from_dict(cls, data: Dict[str, float]) -> 'NodePosition':
-        return cls(data.get("x", 0), data.get("y", 0))
 
 
 class LayoutAlgorithm(ABC):
@@ -84,7 +71,7 @@ class HierarchicalLayout(LayoutAlgorithm):
             
             for i, node in enumerate(level_nodes):
                 x = start_x + i * self.horizontal_spacing
-                positions.append(NodePosition(x, y))
+                positions.append(NodePosition(x=x, y=y))
         
         return positions
 
@@ -167,7 +154,7 @@ class PipelineBuilder:
     Implements Builder pattern for step-by-step pipeline construction
     """
     
-    def __init__(self, name: str = None, description: str = None):
+    def __init__(self, name: str, description: str):
         """
         Initialize pipeline builder
         
@@ -201,7 +188,7 @@ class PipelineBuilder:
         node_type: Union[NodeType, str],
         resources: Optional[Dict[str, Any]] = None,
         retry_policy: Optional[Dict[str, Any]] = None,
-        position: Optional[Tuple[float, float]] = None,
+        position: Optional[Tuple[float, float] | NodePosition] = None,
         metadata: Optional[Dict[str, Any]] = None,
         job: Optional[Any] = None
 
@@ -251,7 +238,9 @@ class PipelineBuilder:
         # Create visual node
         visual_node = VisualNode(
             node=node,
-            position=NodePosition(position[0], position[1]) if position else NodePosition(),
+            position=position if isinstance(position, NodePosition) else NodePosition(
+                x=  position[0] if position else 0, 
+                y=  position[1] if position else 0),
             style=self._get_default_style(node_type)
         )
         
@@ -447,7 +436,7 @@ class PipelineBuilder:
             Self for method chaining
         """
         if node_id in self.visual_nodes:
-            self.visual_nodes[node_id].position = NodePosition(x, y)
+            self.visual_nodes[node_id].position = NodePosition(x=x, y=y)
             self._notify_change("node_moved", {"node_id": node_id, "x": x, "y": y})
         
         return self
@@ -623,11 +612,10 @@ class PipelineBuilder:
                 "tags": self.pipeline.tags
             },
             "nodes": [
-                visual_node.to_dict()
-                for visual_node in self.visual_nodes.values()
+                visual_node.model_dump() for visual_node in self.visual_nodes.values()
             ],
             "edges": [
-                visual_edge.to_dict()
+                visual_edge.model_dump()
                 for visual_edge in self.visual_edges
             ],
             "metadata": {
@@ -667,10 +655,8 @@ class PipelineBuilder:
         # Add nodes
         for node_data in data.get("nodes", []):
             builder.add_node(
-                node_id=node_data["id"],
                 name=node_data["name"],
                 node_type=node_data["type"],
-                config=node_data.get("config", {}),
                 position=(
                     node_data["position"]["x"],
                     node_data["position"]["y"]
@@ -803,13 +789,11 @@ class PipelineBuilder:
                 visual_node = self.visual_nodes[node_id]
                 
                 sub_builder.add_node(
-                    node_id=node_id,
                     name=node.name,
                     node_type=node.type,
-                    config=node.config.parameters,
                     resources=node.config.resources,
                     retry_policy=node.config.retry_policy,
-                    position=(visual_node.position.x, visual_node.position.y),
+                    position=visual_node.position,
                     metadata=node.metadata
                 )
         
@@ -842,10 +826,8 @@ class PipelineBuilder:
             node = visual_node.node
             
             self.add_node(
-                node_id=new_node_id,
                 name=node.name,
                 node_type=node.type,
-                config=node.config.parameters,
                 resources=node.config.resources,
                 retry_policy=node.config.retry_policy,
                 position=(visual_node.position.x, visual_node.position.y),
@@ -1131,7 +1113,7 @@ class PipelineTemplate:
 if __name__ == "__main__":
     # Example 1: Building a simple pipeline
     print("=== Example 1: Simple Pipeline ===")
-    builder = PipelineBuilder(name="Simple Training Pipeline")
+    builder = PipelineBuilder(name="Simple Training Pipeline", description="A simple pipeline for training a model")
     
     builder.add_node(
         name="Data Ingestion",

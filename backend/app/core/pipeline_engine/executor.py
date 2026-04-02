@@ -7,7 +7,8 @@ from typing import Dict, Any, Optional, Callable, List
 from uuid import UUID
 from datetime import datetime, timezone
 
-from .models import Pipeline, PipelineNode, NodeStatus, ExecutionStatus, ExecutionEvent
+from .models import Pipeline, PipelineNode, NodeStatus
+from app.common.enums import ExecutionStatus, ExecutionEvent
 from .scheduler import PipelineScheduler, SchedulingContext, FIFOScheduler
 from .state_manager import PipelineStateManager
 from .retry_handler import RetryHandler

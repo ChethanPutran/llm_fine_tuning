@@ -159,7 +159,6 @@ async def get_tokenization_statistics(
 
 @router.get("/types", response_model=ListResourcesResponse)
 async def get_tokenizer_types(
-    request: RequestBase = Field(..., description="Request model for getting tokenizer types"),
     controller: TokenizationController = Depends(get_tokenization_controller)
 ):
     """Get available tokenizer types"""
@@ -176,5 +175,9 @@ async def get_tokenizer_types(
             {"name": "MosesTokenizer", "description": "Moses tokenizer for NLP preprocessing"},
             {"name": "CustomTokenizer", "description": "Custom tokenizer defined by user"}
         ],
-        **request.dict()
+        user_id=None,
+        status="success",
+        message="Available tokenizer types retrieved successfully",
+        error=None,
+        tags=[]
     )

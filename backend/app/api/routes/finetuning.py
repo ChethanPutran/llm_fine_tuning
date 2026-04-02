@@ -7,7 +7,7 @@ import logging
 
 from app.dependencies.controller import get_training_controller
 from app.controllers.training_controller import TrainingController
-from app.api.models import LogsResponse, MetricResponse, StartFinetuningRequest, FinetuningStatusResponse, FinetuningResponse
+from app.api.models import ListResourcesResponse, LogsResponse, MetricResponse, StartFinetuningRequest, FinetuningStatusResponse, FinetuningResponse
 from app.api.models import ExecutionStatusResponse, JobCreationResponse, JobStatusResponse, ListJobsResponse, StartCollectionRequest, StatisticsResponse 
 
 
@@ -220,13 +220,37 @@ async def get_finetuning_logs(
     return LogsResponse(**{"job_id": job_id, "logs": logs, "tail": tail})
 
 
-@router.get("/strategies", response_model=List[str])
+@router.get("/strategies", response_model=ListResourcesResponse)
 async def get_strategies():
     """Get available fine-tuning strategies"""
-    return ["full_finetune", "lora", "adapter", "prefix_tuning"]
+    return ListResourcesResponse(
+        items=[
+            {"name": "full_finetune", "description": "Full fine-tuning"},
+            {"name": "lora", "description": "Low-Rank Adaptation"},
+            {"name": "adapter", "description": "Adapter fine-tuning"},
+            {"name": "prefix_tuning", "description": "Prefix tuning"}
+        ],
+        user_id=None,
+        status="success",
+        message="Available fine-tuning strategies retrieved successfully",
+        error=None,
+        tags=[]
+    )
 
 
-@router.get("/tasks", response_model=List[str])
+@router.get("/tasks", response_model=ListResourcesResponse)
 async def get_tasks():
     """Get available fine-tuning tasks"""
-    return ["classification", "summarization", "qa", "generation"]
+    return ListResourcesResponse(
+        items=[
+            {"name": "classification", "description": "Text classification"},
+            {"name": "summarization", "description": "Text summarization"},
+            {"name": "qa", "description": "Question answering"},
+            {"name": "generation", "description": "Text generation"}
+        ],
+        user_id=None,
+        status="success",
+        message="Available fine-tuning tasks retrieved successfully",
+        error=None,
+        tags=[]
+    )

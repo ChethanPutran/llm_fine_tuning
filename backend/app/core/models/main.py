@@ -1,3 +1,14 @@
+
+from transformers import generation
+from transformers.pipelines import SUPPORTED_TASKS
+
+
+data = get_task_resources("text-classification")
+
+print(data)
+
+    
+
 class Models:
     @staticmethod
     def get_available_models():
@@ -108,3 +119,11 @@ class Models:
                 }
             ]
         }
+
+
+if __name__ == "__main__":
+    print("Available Tasks:")
+    print(Tasks.get_available_tasks())
+    
+    print("\nAvailable Models:")
+    print(Models.get_available_models())

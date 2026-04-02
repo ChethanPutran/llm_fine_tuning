@@ -169,7 +169,8 @@ class JobFactory:
             "position": config.get("position", (0, 0)),
             "description": description or "",
             "tags": tags or [],
-            "resources": JobFactory.get_required_job_resource(JobType.DATA_PROCESSING)
+            "resources": JobFactory.get_required_job_resource(JobType.DATA_PROCESSING),
+            "metadata": config.get("metadata", {})
         }
     @staticmethod
     def get_required_job_resource(job_type: JobType) -> Dict[str, Any]:

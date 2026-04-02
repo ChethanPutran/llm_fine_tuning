@@ -138,7 +138,7 @@ class BaseController(ABC):
                 execution_status = await self.orchestrator.get_execution_status(job.execution_id)
             
             return {
-                "job":job.model_dump(),
+                **job.model_dump(),
                 "execution_details": execution_status
             }
             
@@ -196,23 +196,26 @@ class BaseController(ABC):
                 "error": "Failed to cancel execution"
             }
         
-    async def cancel_job(self, job_id: str) -> Dict[str, Any]:
+    async def remove_job(self, job_id: str) -> Dict[str, Any]:
         """
-        Cancel a running data collection job
+        Remove a running data collection job
         
         Args:
             job_id: Job ID
         
         Returns:
-            True if cancelled successfully
+            True if removed successfully
         """
         try:
             job_uuid = UUID(job_id)
-            await self.orchestrator.cancel_job(job_uuid)
+            job = self._get_job(job_uuid)
+            await self.orchestrator.remove_job(job_uuid)
             return {
                 "job_id": job_id,
-                "message": "Job cancelled successfully",
-                "status": "cancelled"
+                "message": "Job removed successfully",
+                "status": "removed",
+                "job_type": job.job_type.value if job else "unknown"
+
             }
         except Exception as e:
             logger.error(f"Invalid job ID: {job_id}")
@@ -225,8 +228,6 @@ class BaseController(ABC):
         status: Optional[str] = None,
         limit: int = 50,
         offset: int = 0,
-        source: Optional[str] = None,
-        topic: Optional[str] = None,
         user_id: Optional[str] = None,
         **kwargs
     ) -> Dict[str, Any]:
@@ -253,17 +254,11 @@ class BaseController(ABC):
             offset=offset
         )
     
-        jobs_list = orchestrator_jobs.get("jobs", [])
+        jobs_list:List[BaseJob] = orchestrator_jobs.get("jobs", [])
         
         # Sort by creation time (newest first)
-        jobs_list.sort(key=lambda x: x['created_at'], reverse=True)
+        jobs_list.sort(key=lambda x: x.created_at, reverse=True)
         
-        # Apply filters
-        if source:
-            jobs_list = [j for j in jobs_list if j.source == source]
-        
-        if topic:
-            jobs_list = [j for j in jobs_list if topic.lower() in j.topic.lower()]
         
         total = len(jobs_list)
         paginated_jobs = jobs_list[offset:offset + limit]
@@ -272,7 +267,11 @@ class BaseController(ABC):
             "total": total,
             "limit": limit,
             "offset": offset,
-            "jobs": [self._job_to_dict(job) for job in paginated_jobs]
+            "jobs": [job.model_dump() for job in paginated_jobs],
+            "status": "success",
+            "message": "Jobs retrieved successfully",
+            "error": None,
+            "tags": []
         }
     
     async def get_statistics(self, user_id: Optional[str] = None) -> Dict[str, Any]:
@@ -285,41 +284,11 @@ class BaseController(ABC):
         Returns:
             Statistics dictionary
         """
-        orchestrator_jobs = self.orchestrator.list_jobs(
+        orchestrator_jobs = await self.orchestrator.get_statistics(
             job_type="data_collection",
             user_id=user_id
         )
-    
-        jobs_list = orchestrator_jobs.get("jobs", [])
-        
-        
-        if user_id:
-            jobs_list = [j for j in jobs_list if j.user_id == user_id]
-        
-        # Count by status
-        status_counts = {}
-        for status in JobStatus:
-            count = len([j for j in jobs_list if j.status == status])
-            if count > 0:
-                status_counts[status.value] = count
-        
-        # Count by source
-        source_counts = {}
-        for job in jobs_list:
-            source_counts[job.source] = source_counts.get(job.source, 0) + 1
-        
-        # Total documents collected
-        total_documents = sum(len(j.documents) for j in jobs_list if j.documents)
-        
-        return {
-            "total_jobs": len(jobs_list),
-            "by_status": status_counts,
-            "by_source": source_counts,
-            "total_documents_collected": total_documents,
-            "completed_jobs": len([j for j in jobs_list if j.status == JobStatus.COMPLETED]),
-            "failed_jobs": len([j for j in jobs_list if j.status == JobStatus.FAILED]),
-            "running_jobs": len([j for j in jobs_list if j.status == JobStatus.RUNNING])
-        }
+        return orchestrator_jobs
     
     def _update_job(self, job_id: UUID, **kwargs):
         """Update job attributes"""
@@ -330,16 +299,4 @@ class BaseController(ABC):
             logger.warning(f"Failed to update job {job_id} with {kwargs}")
         return status
     
-    def _job_to_dict(self, job: Any) -> Dict[str, Any]:
-        """Convert job to dictionary for listing"""
-        return {
-            "job_id": str(job.job_id),
-            "job_type": job.job_type.value if hasattr(job, 'job_type') else None,
-            "status": job.status.value if hasattr(job.status, 'value') else job.status,
-            "progress": job.progress,
-            "created_at": job.created_at.isoformat() if hasattr(job, 'created_at') else None,
-            "started_at": job.started_at.isoformat() if hasattr(job, 'started_at') and job.started_at else None,
-            "completed_at": job.completed_at.isoformat() if hasattr(job, 'completed_at') and job.completed_at else None,
-            "user_id": getattr(job, 'user_id', None),
-            "tags": getattr(job, 'tags', [])
-        }
+   

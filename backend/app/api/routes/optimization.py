@@ -135,7 +135,6 @@ async def get_optimization_metrics(
 
 @router.get("/types", response_model=ListResourcesResponse)
 async def get_optimization_types(
-    request: RequestBase = Field(..., description="Request model for optimization types")
 ):
     """Get available optimization types"""
     return ListResourcesResponse(
@@ -144,5 +143,9 @@ async def get_optimization_types(
             {"name": "quantization", "description": "Model quantization to reduce precision and improve efficiency"},
             {"name": "distillation", "description": "Model distillation to create smaller models with similar performance"}
         ],
-        **request.dict()
+        user_id=None,
+        status="success",
+        message="Available optimization types retrieved successfully",
+        error=None,
+        tags=[] 
     )

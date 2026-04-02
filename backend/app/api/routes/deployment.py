@@ -143,7 +143,6 @@ async def get_deployment_statistics(
 
 @router.get("/targets",  response_model=ListResourcesResponse)
 async def get_deployment_targets(
-request: RequestBase = Field(..., description="Request model for deployment targets"),
 ):
     """Get available deployment targets"""
     return ListResourcesResponse(
@@ -152,13 +151,16 @@ request: RequestBase = Field(..., description="Request model for deployment targ
         {"name": "cloud", "description": "Deploy on cloud platforms (AWS, GCP, Azure)"},
         {"name": "edge", "description": "Deploy on edge devices (NVIDIA Jetson, Raspberry Pi)"}
     ],
-    **request.dict()
+    user_id=None,
+    status="success",
+    message="Available deployment targets retrieved successfully",
+    error=None,
+    tags=[]
     )
 
 
 @router.get("/frameworks", response_model=ListResourcesResponse)
 async def get_serving_frameworks(
-    request: RequestBase = Field(..., description="Request model for serving frameworks")
 ):
     """Get available serving frameworks"""
     return ListResourcesResponse(
@@ -167,5 +169,9 @@ async def get_serving_frameworks(
             {"name": "tensorflow-serving", "description": "TensorFlow Serving"},
             {"name": "onnx", "description": "ONNX Runtime"}
         ],
-        **request.dict()
+        user_id=None,
+        status="success",   
+        message="Available serving frameworks retrieved successfully",
+        error=None,
+        tags=[]
     )

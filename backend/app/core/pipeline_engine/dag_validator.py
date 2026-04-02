@@ -13,7 +13,7 @@ class DAGValidator:
         self._graph: Dict[str, List[str]] = defaultdict(list)
         self._reverse_graph: Dict[str, List[str]] = defaultdict(list)
     
-    async def validate(self) -> Tuple[bool, List[str]]:
+    def validate(self) -> Tuple[bool, List[str]]:
         """
         Validate the pipeline DAG
         Returns: (is_valid, list_of_errors)
@@ -37,7 +37,7 @@ class DAGValidator:
         
         return len(errors) == 0, errors
     
-    async def _build_graphs(self) -> None:
+    def _build_graphs(self) -> None:
         """Build adjacency lists for the DAG"""
         self._graph.clear()
         self._reverse_graph.clear()
@@ -47,7 +47,7 @@ class DAGValidator:
                 self._graph[edge.source].append(edge.target)
                 self._reverse_graph[edge.target].append(edge.source)
     
-    async def _detect_cycle(self) -> List[str]:
+    def _detect_cycle(self) -> List[str]:
         """Detect cycles using DFS"""
         visited: Set[str] = set()
         rec_stack: Set[str] = set()

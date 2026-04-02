@@ -2,7 +2,8 @@ from typing import List, Dict, Optional, Callable
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
-from .models import Pipeline, PipelineNode, NodeStatus, ExecutionStatus, SchedulingContext
+from .models import Pipeline, PipelineNode, NodeStatus, SchedulingContext
+from app.common.enums import NodeType
 from .dag_validator import DAGValidator
 from .base import SchedulingStrategy
 
