@@ -68,26 +68,37 @@ export const STAGE_DEFINITIONS = [
     startApi: apiService.startFinetuning,
     statusApi: apiService.getFinetuningStatus,
     fields: [
+      { 
+  key: "task_category", 
+  label: "Task Category", 
+  type: "select", 
+  // Explicitly bind the apiService context
+  fetch_endpoint: (config) => apiService.getTaskCatergories(),
+},
+{ 
+  key: "task", 
+  label: "Task", 
+  type: "select", 
+  dependsOn: "task_category",
+  // Pass the required dependency (task_category) to the API call
+  fetch_endpoint: (config) => apiService.getTasksByCategory(config.task_category),
+},
+{ 
+  key: "model_type", 
+  label: "Model Type", 
+  type: "select", 
+  dependsOn: "task",
+  fetch_endpoint: (config) => apiService.getTaskModels(config.task),
+},
+{ 
+  key: "dataset", 
+  label: "Dataset", 
+  type: "select", 
+  dependsOn: "task",
+  fetch_endpoint: (config) => apiService.getTaskDatasets(config.task),
+}
 
-      { key: "task_category", label: "Task Category", type: "select", options: ["NLP"], default: "NLP",
-         fetch_endpoint: apiService.getTaskCatergories },
-      { key: "task", label: "Task", type: "select", options: ["classification", "summarization", "qa"],
-         default: "classification", dependsOn: "task_category",
-          fetch_endpoint: apiService.getTasksByCategory },
-      { key: "model_type", label: "Model Type", type: "select", options: ["bert", "gpt", "bart"],
-         default: "bert", required: true ,
-          fetch_endpoint: apiService.getTaskModels,
-          dependsOn: "task"
-      },
-      // { key: "model_name", label: "Model Name", type: "text", 
-      //   placeholder: "bert-base-uncased", required: true , 
-      //   dependsOn: "model_type"
-      // },
-      { key: "strategy", label: "Strategy", type: "select", options: ["full", "lora", "adapter"], default: "lora" },
-      { key: "dataset", label: "Dataset", type: "select", 
-        options: ["general_instruction_tuning", "mathematical_reasoning", "code_generation"], 
-        default: "general_instruction_tuning", required: true , fetch_endpoint: apiService.getTaskDatasets, 
-        dependsOn: "task"  }
+     
     ],
     advancedFields: [
       
