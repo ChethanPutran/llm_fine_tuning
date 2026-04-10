@@ -3,9 +3,9 @@ from transformers import generation
 from transformers.pipelines import SUPPORTED_TASKS
 
 
-data = get_task_resources("text-classification")
+# data = get_task_resources("text-classification")
 
-print(data)
+# print(data)
 
     
 
@@ -121,9 +121,9 @@ class Models:
         }
 
 
-if __name__ == "__main__":
-    print("Available Tasks:")
-    print(Tasks.get_available_tasks())
+# if __name__ == "__main__":
+#     print("Available Tasks:")
+#     print(Tasks.get_available_tasks())
     
-    print("\nAvailable Models:")
-    print(Models.get_available_models())
+#     print("\nAvailable Models:")
+#     print(Models.get_available_models())
