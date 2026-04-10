@@ -1,59 +1,58 @@
 # Core
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-pydantic==2.5.0
-pydantic-settings==2.1.0
+fastapi==0.128.0  
+uvicorn==0.40.0   
+pydantic==2.12.5  
+pydantic-settings==2.12.0  
 
 # Database
-# sqlalchemy==2.0.23
-# asyncpg==0.29.0
-# alembic==1.12.1
+alembic==1.18.4  
+asyncpg==0.31.0  
+# sqlalchemy==2.0.23  
 
 # Redis & Caching
-# redis==5.0.1
-# celery==5.3.4
+redis==7.3.0  
+celery==5.6.2  
 
 # Data Processing
-# pyspark==3.5.0
-pandas==2.1.3
-numpy==1.26.2
-beautifulsoup4==4.12.2
-# aiohttp==3.9.1
+pandas==2.3.3 
+numpy==2.4.1  
+beautifulsoup4==4.14.3 
+aiohttp==3.13.3 
 # scrapy==2.11.0
 
 # NLP & ML
-transformers==4.36.0
-# torch==2.1.0
-# torchvision==0.16.0
-peft==0.6.2
-accelerate==0.25.0
-datasets==2.15.0
-tokenizers==0.15.0
-sentencepiece==0.1.99
+transformers==4.57.6 
+torch==2.7.1
+torchvision==0.22.1
+peft==0.18.1 
+accelerate==1.12.0  
+datasets==4.8.4  
+tokenizers==0.22.2  
+sentencepiece==0.2.1 
 
 # Model Optimization
-# optimum==1.13.2
-# onnx==1.14.1
-# onnxruntime==1.16.3
-# nncf==2.7.0
+onnx==1.21.0 
+onnxruntime==1.23.2  
+# optimum==1.13.2 
+# nncf==2.7.0 
 
 # MLflow & Tracking
-# mlflow==2.8.1
+mlflow==3.10.1  
 
 # WebSocket
-# websockets==12.0
+websockets==16.0 
 
 # Utils
-python-multipart==0.0.6
-python-dotenv==1.0.0
-httpx==0.25.1
-psutil==5.9.6
-tqdm==4.66.1
+python-multipart==0.0.21 
+python-dotenv==1.2.1 
+httpx==0.28.1  
+psutil==7.2.1
+tqdm==4.67.1 
 
 # Testing
-pytest==7.4.3
-pytest-asyncio==0.21.1
-pytest-cov==4.1.0
+pytest==9.0.2  
+pytest-asyncio==1.3.0
+# pytest-cov==4.1.0  
 
 # Monitoring
-# prometheus-client==0.19.0
+prometheus_client==0.23.1  
