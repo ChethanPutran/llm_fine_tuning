@@ -13,6 +13,21 @@ class APIService {
     });
   }
 
+  withUser(data = {}) {
+    return { user_id: data.userId || data.user_id || 'system', ...data };
+  }
+
+  normalizePriority(priority = 'NORMAL') {
+    const priorities = {
+      CRITICAL: 0,
+      HIGH: 1,
+      NORMAL: 2,
+      LOW: 3,
+      BACKGROUND: 4,
+    };
+    return priorities[String(priority).toUpperCase()] ?? priority;
+  }
+
   // Generic request handler
   async request(endpoint, options = {}) {
     try {
@@ -31,15 +46,17 @@ class APIService {
   createDataCollectionJob(data) {
     return this.request('/data-collection/add', {
       method: 'POST',
-      data: {
-        source: data.source,
-        topic: data.topic,
-        search_engine: data.searchEngine || 'google',
-        limit: data.limit || 100,
-        config: data.config || {},
+      data: this.withUser({
+        config: {
+          source: data.source,
+          topic: data.topic,
+          search_engine: data.searchEngine || data.search_engine || 'google',
+          limit: Number(data.limit || 100),
+          ...(data.config || {}),
+        },
         auto_execute: data.autoExecute !== false,
         tags: data.tags || []
-      }
+      })
     });
   }
 
@@ -88,13 +105,15 @@ class APIService {
   createPreprocessingJob(data) {
     return this.request('/preprocessing/add', {
       method: 'POST',
-      data: {
-        input_path: data.inputPath,
-        config: data.config,
-        output_path: data.outputPath,
+      data: this.withUser({
+        config: {
+          ...(data.config || {}),
+          input_path: data.inputPath || data.input_path || data.config?.input_path,
+          output_path: data.outputPath || data.output_path || data.config?.output_path,
+        },
         auto_execute: data.autoExecute !== false,
         tags: data.tags || []
-      }
+      })
     });
   }
 
@@ -158,14 +177,16 @@ class APIService {
   createTokenizerJob(data) {
     return this.request('/tokenization/add', {
       method: 'POST',
-      data: {
-        tokenizer_type: data.tokenizerType,
-        dataset_path: data.datasetPath,
-        vocab_size: data.vocabSize || 32000,
-        config: data.config || {},
+      data: this.withUser({
+        config: {
+          ...(data.config || {}),
+          tokenizer_type: data.tokenizerType || data.tokenizer_type || data.config?.tokenizer_type,
+          dataset_path: data.datasetPath || data.dataset_path || data.corpusPath || data.corpus_path || data.config?.corpus_path,
+          vocab_size: Number(data.vocabSize || data.vocab_size || data.config?.vocab_size || 32000),
+        },
         auto_execute: data.autoExecute !== false,
         tags: data.tags || []
-      }
+      })
     });
   }
 
@@ -234,31 +255,53 @@ class APIService {
   createTrainingJob(data) {
     return this.request('/training/add', {
       method: 'POST',
-      data: {
-        model_type: data.modelType,
-        model_name: data.modelName,
-        dataset_path: data.datasetPath,
+      data: this.withUser({
+        train_model_config: {
+          model_type: data.modelType || data.model_type || data.config?.model_type,
+          model_name: data.modelName || data.model_name || data.config?.model_name,
+        },
+        dataset_config: {
+          dataset_path: data.datasetPath || data.dataset_path || data.config?.dataset_path,
+          task_type: data.taskType || data.task_type || data.config?.task_type,
+        },
         config: data.config || {},
         auto_execute: data.autoExecute !== false,
         tags: data.tags || []
-      }
+      })
     });
   }
 
   createFinetuningJob(data) {
     return this.request('/finetuning/add', {
       method: 'POST',
-      data: {
-        model_type: data.modelType,
-        model_name: data.modelName,
-        strategy_type: data.strategyType,
-        task_type: data.taskType,
-        dataset_path: data.datasetPath,
-        config: data.config || {},
+      data: this.withUser({
+        base_model_config: {
+          model_type: data.modelType || data.model_type || data.config?.model_type,
+          model_name: data.modelName || data.model_name || data.config?.model_name,
+        },
+        dataset_config: {
+          dataset_path: data.datasetPath || data.dataset_path || data.dataset || data.config?.dataset,
+          task_type: data.taskType || data.task_type || data.task || data.config?.task,
+        },
+        config: {
+          ...(data.config || {}),
+          strategy_type: data.strategyType || data.strategy_type || data.config?.strategy_type || 'lora',
+          task_type: data.taskType || data.task_type || data.task || data.config?.task,
+        },
         auto_execute: data.autoExecute !== false,
         tags: data.tags || []
-      }
+      })
     });
+  }
+
+  executeFinetuningJob(jobId) {
+    return this.request(`/finetuning/execute/${jobId}`, {
+      method: 'POST'
+    });
+  }
+
+  getFinetuningStatus(jobId) {
+    return this.request(`/finetuning/status/${jobId}`);
   }
 
   executeTrainingJob(jobId) {
@@ -323,13 +366,15 @@ class APIService {
   createOptimizationJob(data) {
     return this.request('/optimization/add', {
       method: 'POST',
-      data: {
-        model_path: data.modelPath,
-        optimization_type: data.optimizationType,
-        config: data.config || {},
+      data: this.withUser({
+        config: {
+          ...(data.config || {}),
+          input_model_path: data.modelPath || data.model_path || data.input_model_path || data.config?.model_path || data.config?.input_model_path,
+          optimization_type: data.optimizationType || data.optimization_type || data.config?.optimization_type,
+        },
         auto_execute: data.autoExecute !== false,
         tags: data.tags || []
-      }
+      })
     });
   }
 
@@ -381,14 +426,16 @@ class APIService {
   createDeploymentJob(data) {
     return this.request('/deployment/add', {
       method: 'POST',
-      data: {
-        model_path: data.modelPath,
-        serving_framework: data.servingFramework,
-        deployment_target: data.deploymentTarget || 'local',
-        config: data.config || {},
+      data: this.withUser({
+        config: {
+          ...(data.config || {}),
+          model_path: data.modelPath || data.model_path || data.config?.model_path,
+          serving_framework: data.servingFramework || data.serving_framework || data.config?.serving_framework,
+          deployment_target: data.deploymentTarget || data.deployment_target || data.config?.deployment_target || 'local',
+        },
         auto_execute: data.autoExecute !== false,
         tags: data.tags || []
-      }
+      })
     });
   }
 
@@ -450,12 +497,14 @@ class APIService {
   createPipelineJob(data) {
     return this.request('/pipelines/add', {
       method: 'POST',
-      data: {
-        pipeline_json: data.pipelineJson,
-        priority: data.priority || 'NORMAL',
+      data: this.withUser({
+        config: {
+          pipeline_json: data.pipelineJson || data.pipeline_json || {},
+        },
+        priority: this.normalizePriority(data.priority),
         auto_execute: data.autoExecute !== false,
         tags: data.tags || []
-      }
+      })
     });
   }
 
@@ -468,12 +517,13 @@ class APIService {
   executePipelineDirectly(data) {
     return this.request('/pipelines/execute', {
       method: 'POST',
-      data: {
-        pipeline_json: data.pipelineJson,
-        user_id: data.userId,
-        priority: data.priority || 'NORMAL',
+      data: this.withUser({
+        config: {
+          pipeline_json: data.pipelineJson || data.pipeline_json || {},
+        },
+        priority: this.normalizePriority(data.priority),
         auto_register: data.autoRegister !== false
-      }
+      })
     });
   }
 
@@ -609,13 +659,14 @@ class APIService {
 
 
   // =========================== General routes ===========================
-  getTaskCatergories() {
+  getTaskCategories() {
     return this.request('/tasks/categories');
   }
+  getTaskCatergories() {
+    return this.getTaskCategories();
+  }
   getTasksByCategory(category) {
-    return this.request('/tasks', {
-      params: { category }
-    });
+    return this.request(`/tasks/${category}`);
   }
   getTaskDatasets(taskId) {
     return this.request(`/tasks/datasets/${taskId}`);

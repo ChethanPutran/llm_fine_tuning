@@ -103,9 +103,16 @@ class BaseController(ABC):
         try:
             execution_result = await self.orchestrator.execute_current_pipeline(user_id, priority)
             
+            pipeline_id = execution_result.get("pipeline_id")
             return {
                 "execution_id": str(execution_result.get("execution_id", "")),
-                "message": "Pipeline execution started successfully"
+                "job_id": str(pipeline_id) if pipeline_id else None,
+                "status": execution_result.get("status", "started"),
+                "message": "Pipeline execution started successfully",
+                "progress": 0,
+                "optimization": execution_result.get("optimization"),
+                "execution_plan": execution_result.get("execution_plan"),
+                "generated_code_path": execution_result.get("generated_code_path"),
             }
             
         except Exception as e:

@@ -107,6 +107,21 @@ async def list_available_tasks(
     except Exception as e:
         logger.error(f"Failed to list available tasks: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/tasks")
+async def list_available_task_types_by_query(
+        category: str,
+        controller: GeneralController = Depends(get_general_controller)
+):
+    """
+    List available task types by category using a query parameter.
+    """
+    try:
+        tasks = controller.get_tasks_by_category(category)
+        return {"tasks": tasks}
+    except Exception as e:
+        logger.error(f"Failed to list available tasks: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
     
 @router.get("/tasks/{category}")
 async def list_available_task_types(
@@ -138,6 +153,16 @@ async def list_available_datasets(
     except Exception as e:
         logger.error(f"Failed to list available datasets: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/tasks/datasets/{task_type}")
+async def list_available_datasets_alias(
+        task_type: str,
+        controller: GeneralController = Depends(get_general_controller)
+):
+    """
+    List available datasets. Alias kept for the frontend API service.
+    """
+    return await list_available_datasets(task_type, controller)
 
 # Available models endpoint
 @router.get("/tasks/models/{category}")
@@ -195,3 +220,132 @@ async def system_info():
         "workers": settings.PIPELINE_WORKERS
     }
 
+
+@router.get("/user/info")
+async def user_info():
+    """
+    Get current user information.
+    """
+    return {
+        "user_id": "system",
+        "name": "System User",
+        "roles": ["admin"],
+        "timestamp": datetime.now().isoformat()
+    }
+
+
+@router.get("/system/status")
+async def system_status(
+        controller: GeneralController = Depends(get_general_controller)
+):
+    """
+    Get live system status for dashboard monitoring.
+    """
+    return await controller.get_system_status()
+
+
+@router.get("/system/metrics")
+async def system_metrics():
+    """
+    Get CPU, memory, disk, and optional GPU metrics.
+    """
+    import psutil
+    import torch
+
+    metrics = {
+        "cpu_percent": psutil.cpu_percent(interval=0.1),
+        "cpu_count": psutil.cpu_count(),
+        "memory": {
+            "total_gb": round(psutil.virtual_memory().total / (1024 ** 3), 2),
+            "available_gb": round(psutil.virtual_memory().available / (1024 ** 3), 2),
+            "percent": psutil.virtual_memory().percent,
+        },
+        "disk": {
+            "total_gb": round(psutil.disk_usage('/').total / (1024 ** 3), 2),
+            "free_gb": round(psutil.disk_usage('/').free / (1024 ** 3), 2),
+            "percent": psutil.disk_usage('/').percent,
+        },
+        "timestamp": datetime.now().isoformat(),
+    }
+
+    if torch.cuda.is_available():
+        metrics["gpu"] = {
+            "count": torch.cuda.device_count(),
+            "devices": [
+                {
+                    "index": index,
+                    "name": torch.cuda.get_device_name(index),
+                    "memory_allocated_gb": round(torch.cuda.memory_allocated(index) / (1024 ** 3), 2),
+                    "memory_reserved_gb": round(torch.cuda.memory_reserved(index) / (1024 ** 3), 2),
+                }
+                for index in range(torch.cuda.device_count())
+            ],
+        }
+    else:
+        metrics["gpu"] = {"count": 0, "devices": []}
+
+    return metrics
+
+
+@router.get("/system/resources")
+async def system_resources():
+    """
+    Get available compute resources.
+    """
+    import psutil
+    import torch
+
+    return {
+        "cpu": {
+            "count": psutil.cpu_count(),
+            "available_percent": max(0, 100 - psutil.cpu_percent(interval=0.1)),
+        },
+        "memory": {
+            "available_gb": round(psutil.virtual_memory().available / (1024 ** 3), 2),
+            "total_gb": round(psutil.virtual_memory().total / (1024 ** 3), 2),
+        },
+        "gpu": {
+            "available": torch.cuda.is_available(),
+            "count": torch.cuda.device_count() if torch.cuda.is_available() else 0,
+        },
+        "workers": settings.PIPELINE_WORKERS,
+    }
+
+
+@router.get("/system/resource-usage")
+async def system_resource_usage():
+    """
+    Alias for current system metrics, kept for frontend compatibility.
+    """
+    return await system_metrics()
+
+
+@router.get("/system/logs")
+async def system_logs(tail: int = 100):
+    """
+    Return recent application log lines when a local log file exists.
+    """
+    from pathlib import Path
+
+    candidates = [
+        Path("logs/app.log"),
+        Path("app.log"),
+        Path("logs/platform.log"),
+    ]
+    for path in candidates:
+        if path.exists():
+            lines = path.read_text(errors="replace").splitlines()
+            return {
+                "logs": lines[-tail:],
+                "tail": tail,
+                "source": str(path),
+                "status": "success",
+            }
+
+    return {
+        "logs": [],
+        "tail": tail,
+        "source": None,
+        "status": "success",
+        "message": "No local log file found",
+    }

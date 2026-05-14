@@ -20,7 +20,7 @@ class RequestBase(BaseModel):
     """Base request model with common fields"""
     auto_execute: bool = Field(True, description="Automatically execute the job after creation")
     tags: Optional[List[str]] = Field(None, description="Optional tags for categorization")
-    user_id: str = Field(..., description="User ID who triggered the request")
+    user_id: str = Field("system", description="User ID who triggered the request")
 
 class StartCollectionRequest(RequestBase):
     """Request model for starting data collection"""
@@ -100,8 +100,11 @@ class JobStatusResponse(ResponseBase):
 class ExecutionStatusResponse(ResponseBase):
     """Response model for execution status"""
     execution_id: UUID = Field(..., description="Execution identifier")
-    job_id: UUID = Field(..., description="Associated job identifier")
+    job_id: Optional[UUID] = Field(None, description="Associated job identifier")
     progress: Optional[float] = Field(None, description="Progress percentage of the execution")
+    optimization: Optional[Dict[str, Any]] = Field(None, description="Pipeline optimization summary")
+    execution_plan: Optional[List[List[str]]] = Field(None, description="Parallel execution plan")
+    generated_code_path: Optional[str] = Field(None, description="Path to generated Python execution code")
 
 class ListJobsResponse(ResponseBase):
     """Response model for listing jobs"""

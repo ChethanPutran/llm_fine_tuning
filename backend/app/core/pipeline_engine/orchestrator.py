@@ -14,6 +14,8 @@ from app.core.pipeline_engine.models import Pipeline
 from app.core.pipeline_engine.executor import PipelineExecutor
 from app.core.pipeline_engine.scheduler import PipelineScheduler, PriorityScheduler
 from app.core.pipeline_engine.dag_validator import DAGValidator
+from app.core.pipeline_engine.optimizer import PipelineOptimizer
+from app.core.pipeline_engine.code_generator import PipelineCodeGenerator
 from app.core.pipeline_engine.state_manager import PipelineStateManager, RedisStateStorage
 from app.core.execution.resource_manager import ResourceManager
 from app.core.execution.async_executor import AsyncExecutor
@@ -36,6 +38,9 @@ class ExecutionContext:
         self.end_time: Optional[datetime] = None
         self.status: str = "created"
         self.error: Optional[str] = None
+        self.optimization_summary: Dict[str, Any] = {}
+        self.execution_plan: List[List[str]] = []
+        self.generated_code_path: Optional[str] = None
         self.completed_nodes: List[str] = []
         self.failed_nodes: List[str] = []
         self.node_results: Dict[str, Any] = {}
@@ -63,6 +68,8 @@ class PipelineOrchestrator:
         self.scheduler = PipelineScheduler(PriorityScheduler())
         self.resource_manager = ResourceManager()
         self.retry_handler = RetryHandler() 
+        self.pipeline_optimizer = PipelineOptimizer()
+        self.code_generator = PipelineCodeGenerator()
         
         # Global pipeline builder - users add nodes to this
         self.pipeline_builder = PipelineBuilder(
@@ -78,7 +85,7 @@ class PipelineOrchestrator:
         )
         
         # Async execution
-        self.async_executor = AsyncExecutor(self.pipeline_executor, num_workers)
+        self.async_executor = AsyncExecutor(self.pipeline_executor, self.resource_manager, num_workers)
         
         # Track state
         self.active_executions: Dict[UUID, ExecutionContext] = {}
@@ -113,22 +120,36 @@ class PipelineOrchestrator:
         from app.core.pipeline_engine.handlers.optimization_handler import OptimizationHandler
         from app.core.pipeline_engine.handlers.deployment_handler import DeploymentHandler
         from app.core.pipeline_engine.handlers.tokenization_handler import TokenizationHandler
+        from app.core.pipeline_engine.handlers.evaluation_handler import EvaluationHandler
         
         # Create handler instances (pass orchestrator reference)
         self.handlers = {
-            "data_ingestion": DataCollectionHandler(),
-            "data_processing": PreprocessingHandler(),
-            "training": TrainingHandler(),
-            "finetuning": FinetuningHandler(),
-            "optimization": OptimizationHandler(),
-            "deployment": DeploymentHandler(),
-            "tokenization": TokenizationHandler(),
+            NodeType.DATA_INGESTION.value: DataCollectionHandler(),
+            NodeType.DATA_PROCESSING.value: PreprocessingHandler(),
+            NodeType.MODEL_TRAINING.value: TrainingHandler(),
+            NodeType.MODEL_FINETUNING.value: FinetuningHandler(),
+            NodeType.MODEL_EVALUATION.value: EvaluationHandler(),
+            NodeType.OPTIMIZATION.value: OptimizationHandler(),
+            NodeType.MODEL_DEPLOYMENT.value: DeploymentHandler(),
+            NodeType.TOKENIZATION.value: TokenizationHandler(),
+        }
+        worker_handler_aliases = {
+            "data_collection": self.handlers[NodeType.DATA_INGESTION.value],
+            "data_processing": self.handlers[NodeType.DATA_PROCESSING.value],
+            "training": self.handlers[NodeType.MODEL_TRAINING.value],
+            "finetuning": self.handlers[NodeType.MODEL_FINETUNING.value],
+            "evaluation": self.handlers[NodeType.MODEL_EVALUATION.value],
+            "optimization": self.handlers[NodeType.OPTIMIZATION.value],
+            "deployment": self.handlers[NodeType.MODEL_DEPLOYMENT.value],
+            "tokenization": self.handlers[NodeType.TOKENIZATION.value],
         }
         
-        # Register handlers with workers
+        # Register handlers with direct pipeline execution and worker execution.
         for node_type, handler in self.handlers.items():
+            self.pipeline_executor.register_node_handler(node_type, handler.execute)
+        for job_type, handler in worker_handler_aliases.items():
             for worker in self.async_executor.workers:
-                worker.register_handler(node_type, handler.execute)
+                worker.register_handler(job_type, handler.execute)
         
         logger.info(f"Registered {len(self.handlers)} job handlers")
 
@@ -486,14 +507,20 @@ class PipelineOrchestrator:
     ) -> Dict[str, Any]:
         """Execute a pipeline"""
         
-        # Validate
-        validator = DAGValidator(pipeline)
-        is_valid, errors = validator.validate()
-        if not is_valid:
-            raise ValueError(f"Invalid pipeline: {errors}")
+        # Optimize and validate the graph before runtime execution.
+        optimization_result = self.pipeline_optimizer.optimize(pipeline)
+        pipeline = optimization_result.pipeline
+        execution_id = uuid4()
+        generated_code = self.code_generator.generate(
+            pipeline=pipeline,
+            execution_plan=optimization_result.execution_plan,
+            optimization_summary=optimization_result.summary,
+            execution_id=execution_id,
+            user_id=user_id,
+            priority=priority,
+        )
         
         # Create execution context
-        execution_id = uuid4()
         execution_context = ExecutionContext(
             execution_id=execution_id,
             pipeline=pipeline,
@@ -501,9 +528,17 @@ class PipelineOrchestrator:
             priority=priority,
             start_time=datetime.now(timezone.utc)
         )
+        execution_context.optimization_summary = optimization_result.summary
+        execution_context.execution_plan = optimization_result.execution_plan
+        execution_context.generated_code_path = generated_code["path"]
         self.active_executions[execution_id] = execution_context
         
-        logger.info(f"Created execution {execution_id} for pipeline {pipeline.name}")
+        logger.info(
+            "Created optimized execution %s for pipeline %s: %s",
+            execution_id,
+            pipeline.name,
+            optimization_result.summary,
+        )
         
         # Save initial state
         await self.state_manager.save_state(execution_id, pipeline)
@@ -518,6 +553,9 @@ class PipelineOrchestrator:
             "pipeline_id": pipeline.id,
             "pipeline_name": pipeline.name,
             "status": "started",
+            "optimization": optimization_result.summary,
+            "execution_plan": optimization_result.execution_plan,
+            "generated_code_path": generated_code["path"],
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
     
@@ -533,7 +571,10 @@ class PipelineOrchestrator:
             await self._broadcast_status({
                 "type": "execution_started",
                 "execution_id": str(execution_id),
-                "pipeline_name": pipeline.name
+                "pipeline_name": pipeline.name,
+                "optimization": context.optimization_summary,
+                "execution_plan": context.execution_plan,
+                "generated_code_path": context.generated_code_path
             })
             
             # Execute using pipeline executor (retries handled by RetryHandler internally)
@@ -553,6 +594,9 @@ class PipelineOrchestrator:
                 "type": "execution_completed",
                 "execution_id": str(execution_id),
                 "status": result["status"],
+                "optimization": context.optimization_summary,
+                "execution_plan": context.execution_plan,
+                "generated_code_path": context.generated_code_path,
                 "duration": (context.end_time - context.start_time).total_seconds()
             })
             
@@ -603,6 +647,9 @@ class PipelineOrchestrator:
             "failed_nodes": len(context.failed_nodes),
             "total_nodes": len(context.pipeline.nodes),
             "progress": len(context.completed_nodes) / len(context.pipeline.nodes) * 100 if context.pipeline.nodes else 0,
+            "optimization": context.optimization_summary,
+            "execution_plan": context.execution_plan,
+            "generated_code_path": context.generated_code_path,
             "start_time": context.start_time.isoformat(),
             "end_time": context.end_time.isoformat() if context.end_time else None,
             "node_results": context.node_results,

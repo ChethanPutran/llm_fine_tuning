@@ -4,6 +4,7 @@ export const STAGE_TYPES = {
   DATA_COLLECTION: 'data_collection',
   PREPROCESSING: 'preprocessing',
   TOKENIZATION: 'tokenization',
+  TRAINING: 'training',
   FINETUNING: 'finetuning',
   OPTIMIZATION: 'optimization',
   DEPLOYMENT: 'deployment',
@@ -14,8 +15,8 @@ export const STAGE_DEFINITIONS = [
     id: STAGE_TYPES.DATA_COLLECTION,
     name: "Data Collection",
     color: "#2563eb",
-    startApi: apiService.startDataCollection,
-    statusApi: apiService.getCollectionStatus,
+    startApi: apiService.createDataCollectionJob.bind(apiService),
+    statusApi: apiService.getDataCollectionStatus.bind(apiService),
     fields: [
       { key: "source", label: "Data Source", type: "select", options: ["web", "books", "upload"], default: "web", required: true },
       { key: "topic", label: "Topic", type: "text", placeholder: "e.g., machine learning", required: true },
@@ -30,8 +31,8 @@ export const STAGE_DEFINITIONS = [
     id: STAGE_TYPES.PREPROCESSING,
     name: "Preprocessing",
     color: "#7c3aed",
-    startApi: apiService.startPreprocessing,
-    statusApi: apiService.getPreprocessingStatus,
+    startApi: apiService.createPreprocessingJob.bind(apiService),
+    statusApi: apiService.getPreprocessingStatus.bind(apiService),
     fields: [
       { key: "input_path", label: "Input Path", type: "text", placeholder: "e.g., /path/to/input", required: true },
       { key: "clean_method", label: "Cleaning Method", type: "select", options: ["standard", "advanced"], default: "standard" },
@@ -49,8 +50,8 @@ export const STAGE_DEFINITIONS = [
     id: STAGE_TYPES.TOKENIZATION,
     name: "Tokenization",
     color: "#0ea5e9",
-    startApi: apiService.trainTokenizer,
-    statusApi: apiService.getTokenizerStatus,
+    startApi: apiService.createTokenizerJob.bind(apiService),
+    statusApi: apiService.getTokenizerStatus.bind(apiService),
     fields: [
       { key: "tokenizer_type", label: "Tokenizer Type", type: "select", options: ["bpe", "wordpiece", "sentencepiece"], default: "bpe" },
       { key: "vocab_size", label: "Vocabulary Size", type: "select", options: ["30000", "50000", "100000"], default: "50000" },
@@ -62,11 +63,29 @@ export const STAGE_DEFINITIONS = [
     ]
   },
   {
+    id: STAGE_TYPES.TRAINING,
+    name: "Training",
+    color: "#ea580c",
+    startApi: apiService.createTrainingJob.bind(apiService),
+    statusApi: apiService.getTrainingStatus.bind(apiService),
+    fields: [
+      { key: "model_type", label: "Model Type", type: "select", options: ["bert", "bart", "gpt", "vit", "vlm"], default: "bert", required: true },
+      { key: "model_name", label: "Model Name", type: "text", placeholder: "e.g., bert-base-uncased", required: true },
+      { key: "dataset_path", label: "Dataset Path", type: "text", placeholder: "e.g., data/processed/train.json", required: true }
+    ],
+    advancedFields: [
+      { key: "task_type", label: "Task", type: "select", options: ["classification", "summarization", "qa", "generation"], default: "classification" },
+      { key: "learning_rate", label: "Learning Rate", type: "number", step: 0.00001, default: 0.00002 },
+      { key: "num_epochs", label: "Epochs", type: "number", min: 1, max: 20, default: 3 },
+      { key: "batch_size", label: "Batch Size", type: "select", options: ["8", "16", "32", "64"], default: "16" }
+    ]
+  },
+  {
     id: STAGE_TYPES.FINETUNING,
     name: "Fine-tuning",
     color: "#db2777",
-    startApi: apiService.startFinetuning,
-    statusApi: apiService.getFinetuningStatus,
+    startApi: apiService.createFinetuningJob.bind(apiService),
+    statusApi: apiService.getFinetuningStatus.bind(apiService),
     fields: [
       { 
   key: "task_category", 
@@ -111,8 +130,8 @@ export const STAGE_DEFINITIONS = [
     id: STAGE_TYPES.OPTIMIZATION,
     name: "Optimization",
     color: "#f59e0b",
-    startApi: apiService.optimizeModel,
-    statusApi: apiService.getOptimizationStatus,
+    startApi: apiService.createOptimizationJob.bind(apiService),
+    statusApi: apiService.getOptimizationStatus.bind(apiService),
     fields: [
       { key: "optimization_type", label: "Optimization Type", type: "select", options: ["pruning", "distillation", "quantization"], default: "pruning" }
     ],
@@ -124,8 +143,8 @@ export const STAGE_DEFINITIONS = [
     id: STAGE_TYPES.DEPLOYMENT,
     name: "Deployment",
     color: "#10b981",
-    startApi: apiService.deployModel,
-    statusApi: apiService.getDeploymentStatus,
+    startApi: apiService.createDeploymentJob.bind(apiService),
+    statusApi: apiService.getDeploymentStatus.bind(apiService),
     fields: [
       { key: "deployment_target", label: "Target", type: "select", options: ["local", "cloud", "edge"], default: "local" },
       { key: "serving_framework", label: "Framework", type: "select", options: ["torchserve", "tensorflow-serving", "onnx"], default: "torchserve" }

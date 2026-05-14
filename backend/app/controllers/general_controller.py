@@ -19,19 +19,47 @@ class GeneralController:
 
     def get_tasks_by_category(self, category_str: str):
         """Get tasks by category"""
-        return Tasks.get_tasks_by_category(TaskCategory(category_str))
+        return [task.value for task in Tasks.get_tasks_by_category(TaskCategory(category_str))]
 
     def get_task_categories(self):
         """Get all available task categories"""
-        return Tasks.get_task_categories()
+        return [category.value for category in Tasks.get_task_categories()]
 
     def get_task_datasets(self, category_str: str):
         """Get datasets for a specific task type"""
-        return Tasks.get_task_datasets(TaskType(category_str))
+        try:
+            datasets = Tasks.get_task_datasets(TaskType(category_str))
+            return [
+                getattr(dataset, "id", None) or getattr(dataset, "name", None) or str(dataset)
+                for dataset in datasets
+            ]
+        except Exception as exc:
+            logger.warning("Falling back to built-in dataset list for %s: %s", category_str, exc)
+            return {
+                "text-classification": ["imdb", "ag_news", "yelp_review_full"],
+                "question-answering": ["squad", "squad_v2"],
+                "summarization": ["cnn_dailymail", "xsum"],
+                "translation": ["wmt14", "opus_books"],
+                "text-generation": ["wikitext", "openwebtext"],
+            }.get(category_str, ["local_dataset"])
 
     def get_task_models(self, category_str: str):
         """Get models for a specific task type"""
-        return Tasks.get_task_models(TaskType(category_str))
+        try:
+            models = Tasks.get_task_models(TaskType(category_str))
+            return [
+                getattr(model, "modelId", None) or getattr(model, "id", None) or str(model)
+                for model in models
+            ]
+        except Exception as exc:
+            logger.warning("Falling back to built-in model list for %s: %s", category_str, exc)
+            return {
+                "text-classification": ["bert-base-uncased", "distilbert-base-uncased"],
+                "question-answering": ["deepset/roberta-base-squad2", "distilbert-base-cased-distilled-squad"],
+                "summarization": ["facebook/bart-large-cnn", "t5-small"],
+                "translation": ["t5-small", "facebook/nllb-200-distilled-600M"],
+                "text-generation": ["gpt2", "distilgpt2"],
+            }.get(category_str, ["bert-base-uncased"])
 
     def get_datasets(self):
         """Get all available datasets"""
@@ -58,5 +86,4 @@ class GeneralController:
             "active_executions": active_jobs,
             "timestamp": datetime.now().isoformat()
         }
-
 

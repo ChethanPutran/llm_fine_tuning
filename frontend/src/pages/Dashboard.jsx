@@ -98,7 +98,7 @@ const TabPanel = ({ children, value, index, ...other }) => (
 );
 
 // Pipeline History Item Component
-const HistoryItem = ({ item, onLoad, onDelete }) => (
+const HistoryItem = ({ item, onLoad, onDelete, onViewDetails }) => (
   <Paper
     sx={{
       p: 2,
@@ -427,8 +427,10 @@ const deleteFromHistory = useCallback((id) => {
                       result = await apiService.executeTokenizerJob(stage.jobId);
                       break;
                     case 'training':
-                    case 'finetuning':
                       result = await apiService.executeTrainingJob(stage.jobId);
+                      break;
+                    case 'finetuning':
+                      result = await apiService.executeFinetuningJob(stage.jobId);
                       break;
                     case 'optimization':
                       result = await apiService.executeOptimizationJob(stage.jobId);
@@ -461,7 +463,8 @@ const deleteFromHistory = useCallback((id) => {
           id: stage.id,
           type: stage.type,
           name: stage.name,
-          config: stage.config
+          config: stage.config,
+          job_id: stage.jobId
         })),
         edges: pipeline.slice(1).map((_, idx) => ({
           source: pipeline[idx].id,
@@ -713,53 +716,53 @@ const updatePipelineStatus = useCallback((data) => {
               break;
             case 'preprocessing':
               jobResult = await apiService.createPreprocessingJob({
-                inputPath: currentConfig.inputPath,
+                inputPath: currentConfig.input_path || currentConfig.inputPath,
                 config: currentConfig,
                 autoExecute: false
               });
               break;
             case 'tokenization':
               jobResult = await apiService.createTokenizerJob({
-                tokenizerType: currentConfig.tokenizerType,
-                datasetPath: currentConfig.datasetPath,
-                vocabSize: currentConfig.vocabSize || 32000,
+                tokenizerType: currentConfig.tokenizer_type || currentConfig.tokenizerType,
+                datasetPath: currentConfig.dataset_path || currentConfig.corpus_path || currentConfig.datasetPath,
+                vocabSize: currentConfig.vocab_size || currentConfig.vocabSize || 32000,
                 config: currentConfig,
                 autoExecute: false
               });
               break;
             case 'training':
               jobResult = await apiService.createTrainingJob({
-                modelType: currentConfig.modelType,
-                modelName: currentConfig.modelName,
-                datasetPath: currentConfig.datasetPath,
+                modelType: currentConfig.model_type || currentConfig.modelType,
+                modelName: currentConfig.model_name || currentConfig.modelName,
+                datasetPath: currentConfig.dataset_path || currentConfig.datasetPath,
                 config: currentConfig,
                 autoExecute: false
               });
               break;
             case 'finetuning':
               jobResult = await apiService.createFinetuningJob({
-                modelType: currentConfig.modelType,
-                modelName: currentConfig.modelName,
-                strategyType: currentConfig.strategyType,
-                taskType: currentConfig.taskType,
-                datasetPath: currentConfig.datasetPath,
+                modelType: currentConfig.model_type || currentConfig.modelType,
+                modelName: currentConfig.model_name || currentConfig.modelName,
+                strategyType: currentConfig.strategy_type || currentConfig.strategyType || 'lora',
+                taskType: currentConfig.task || currentConfig.task_type || currentConfig.taskType,
+                datasetPath: currentConfig.dataset || currentConfig.dataset_path || currentConfig.datasetPath,
                 config: currentConfig,
                 autoExecute: false
               });
               break;
             case 'optimization':
               jobResult = await apiService.createOptimizationJob({
-                modelPath: currentConfig.modelPath,
-                optimizationType: currentConfig.optimizationType,
+                modelPath: currentConfig.model_path || currentConfig.modelPath,
+                optimizationType: currentConfig.optimization_type || currentConfig.optimizationType,
                 config: currentConfig,
                 autoExecute: false
               });
               break;
             case 'deployment':
               jobResult = await apiService.createDeploymentJob({
-                modelPath: currentConfig.modelPath,
-                servingFramework: currentConfig.servingFramework,
-                deploymentTarget: currentConfig.deploymentTarget || 'local',
+                modelPath: currentConfig.model_path || currentConfig.modelPath,
+                servingFramework: currentConfig.serving_framework || currentConfig.servingFramework,
+                deploymentTarget: currentConfig.deployment_target || currentConfig.deploymentTarget || 'local',
                 config: currentConfig,
                 autoExecute: false
               });

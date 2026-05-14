@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   Card, CardContent, Typography, TextField, Select, MenuItem,
   FormControl, InputLabel, FormControlLabel, Switch,
-  Box, IconButton, Chip, Divider, CircularProgress
+  Box, IconButton, Chip, Divider, CircularProgress, Slider
 } from '@mui/material';
 import { Settings } from '@mui/icons-material';
 
@@ -45,7 +45,10 @@ const StageConfig = ({ stage, onConfigChange, config = {} }) => {
           try {
             const data = await field.fetch_endpoint(config);
             if (isMounted) {
-              setAsyncOptions(prev => ({ ...prev, [field.key]: data }));
+              const values = Array.isArray(data)
+                ? data
+                : data?.items || data?.categories || data?.tasks || data?.models || data?.datasets || [];
+              setAsyncOptions(prev => ({ ...prev, [field.key]: values }));
             }
           } catch (err) {
             console.error(`Fetch error for ${field.key}:`, err);
@@ -84,10 +87,21 @@ const StageConfig = ({ stage, onConfigChange, config = {} }) => {
   }, [config, onConfigChange, allFields]);
 
   const renderField = (field) => {
-    const value = config[field.key] ?? '';
-    const options = asyncOptions[field.key] || [];
+    const value = config[field.key] ?? field.default ?? (field.type === 'boolean' ? false : '');
+    const options = field.fetch_endpoint ? (asyncOptions[field.key] || []) : (field.options || []);
     const isLoading = loadingFields[field.key];
     const isDisabled = field.dependsOn && !config[field.dependsOn];
+    const normalizedOptions = Array.isArray(options)
+      ? options.map((opt) => {
+          if (typeof opt === 'string' || typeof opt === 'number') {
+            return { value: opt, label: String(opt) };
+          }
+          return {
+            value: opt.value ?? opt.id ?? opt.name,
+            label: opt.label ?? opt.name ?? opt.id ?? String(opt.value),
+          };
+        })
+      : [];
 
     return (
       <Box key={field.key} sx={{ mb: 2 }}>
@@ -100,9 +114,9 @@ const StageConfig = ({ stage, onConfigChange, config = {} }) => {
               onChange={(e) => handleChange(field.key, e.target.value, field)}
               endAdornment={isLoading ? <CircularProgress size={20} sx={{ mr: 4 }} /> : null}
             >
-              {options.length > 0 ? (
-                options.map(opt => (
-                  <MenuItem key={opt} value={opt}>{opt}</MenuItem>
+              {normalizedOptions.length > 0 ? (
+                normalizedOptions.map(opt => (
+                  <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
                 ))
               ) : (
                 <MenuItem disabled>
@@ -111,12 +125,43 @@ const StageConfig = ({ stage, onConfigChange, config = {} }) => {
               )}
             </Select>
           </FormControl>
+        ) : field.type === 'boolean' ? (
+          <FormControlLabel
+            control={
+              <Switch
+                checked={Boolean(value)}
+                onChange={(e) => handleChange(field.key, e.target.checked, field)}
+              />
+            }
+            label={field.label}
+          />
+        ) : field.type === 'slider' ? (
+          <Box>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              {field.label}: {value}
+            </Typography>
+            <Slider
+              value={Number(value)}
+              min={field.min ?? 0}
+              max={field.max ?? 100}
+              step={field.step ?? 1}
+              valueLabelDisplay="auto"
+              onChange={(_, nextValue) => handleChange(field.key, nextValue, field)}
+            />
+          </Box>
         ) : (
           <TextField
             fullWidth
             type={field.type === 'number' ? 'number' : 'text'}
             label={field.label}
             value={value}
+            placeholder={field.placeholder}
+            required={field.required}
+            inputProps={{
+              min: field.min,
+              max: field.max,
+              step: field.step,
+            }}
             onChange={(e) => handleChange(field.key, e.target.value, field)}
           />
         )}

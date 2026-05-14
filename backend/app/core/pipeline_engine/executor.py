@@ -356,10 +356,32 @@ class PipelineExecutor:
         
         handler = self._node_handlers[node_type]
         
-        # Create job-like object for handler
+        if node.job is not None:
+            job = node.job
+            job.execution_id = execution_id
+            job.pipeline_id = pipeline.id
+            job.node_id = node.id
+            job.metadata.setdefault("node_config", node.config.parameters)
+            job.metadata.setdefault("pipeline_id", str(pipeline.id))
+            job.metadata.setdefault("execution_id", str(execution_id))
+            job.metadata.setdefault("node_type", node_type)
+            job.metadata.setdefault("node_name", node.name)
+            if inspect.iscoroutinefunction(handler):
+                return await handler(job)
+            return handler(job)
+
+        # Create job-like object for generated/ad hoc pipeline nodes.
         class JobProxy:
             def __init__(self, node, execution_id, pipeline):
                 self.job_id = execution_id
+                self.execution_id = execution_id
+                self.pipeline_id = pipeline.id
+                self.node_id = node.id
+                self.status = NodeStatus.PENDING
+                self.progress = 0
+                self.config = node.config.parameters
+                self.result = None
+                self.error = None
                 self.metadata = {
                     'node_config': node.config.parameters,
                     'node_id': node.id,
@@ -368,6 +390,21 @@ class PipelineExecutor:
                     'node_type': node_type,
                     'node_name': node.name
                 }
+
+            def update_progress(self, progress: float):
+                self.progress = progress
+
+            def mark_started(self):
+                self.status = NodeStatus.RUNNING
+
+            def mark_completed(self, result):
+                self.status = NodeStatus.COMPLETED
+                self.result = result
+                self.progress = 100
+
+            def mark_failed(self, error):
+                self.status = NodeStatus.FAILED
+                self.error = error
         
         job = JobProxy(node, execution_id, pipeline)
         

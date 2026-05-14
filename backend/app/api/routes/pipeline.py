@@ -32,6 +32,10 @@ async def execute_pipeline(
         result = await controller.execute_pipeline(
             user_id=request.user_id,
             priority=request.priority
+        ) if not request.config.pipeline_json else await controller.execute_pipeline_definition(
+            pipeline_json=request.config.pipeline_json,
+            user_id=request.user_id,
+            priority=request.priority
         )
         return ExecutionStatusResponse(**result)
         
@@ -278,7 +282,7 @@ async def get_pipeline_template(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/templates/{template_name}/instantiate", response_model=ExecutionStatusResponse)
+@router.post("/templates/{template_name}/instantiate", response_model=Dict[str, Any])
 async def instantiate_template(
     template_name: str,
     config: Optional[Dict[str, Any]] = None,
@@ -290,8 +294,7 @@ async def instantiate_template(
     Creates a pipeline instance from a template with optional configuration overrides.
     """
     try:
-        result = await controller.instantiate_template(template_name, config=config)
-        return ExecutionStatusResponse(**result)
+        return await controller.instantiate_template(template_name, config=config)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -310,8 +313,7 @@ async def validate_pipeline(
     Checks if a pipeline definition is valid without executing it.
     """
     try:
-        await controller.validate_pipeline(pipeline_json)
-        
+        result = await controller.validate_pipeline(pipeline_json)
         return ValidationResponse(
             valid=True,
             message="Pipeline definition is valid",
@@ -319,8 +321,8 @@ async def validate_pipeline(
             status="success",
             errors=None,
             tags=[],
-            nodes=[],
-            edges=[]
+            nodes=result.get("nodes", 0),
+            edges=result.get("edges", 0)
         )
     except Exception as e:
         return ValidationResponse(
@@ -330,6 +332,6 @@ async def validate_pipeline(
             user_id=None,
             status="error",
             tags=[],
-            nodes=[],
-            edges=[]
+            nodes=len(pipeline_json.get("nodes", [])),
+            edges=len(pipeline_json.get("edges", []))
         )

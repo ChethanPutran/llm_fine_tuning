@@ -72,13 +72,84 @@ class PipelineController(BaseController):
             Validation result
         """
         try:
-            # Validate the pipeline definition using the orchestrator's validation method
-            res = await self.orchestrator.validate_pipeline(pipeline_json)
+            pipeline = self._pipeline_from_definition(pipeline_json)
+            self.orchestrator.pipeline_optimizer.optimize(pipeline)
+            return {
+                "valid": True,
+                "nodes": len(pipeline_json.get("nodes", [])),
+                "edges": len(pipeline_json.get("edges", [])),
+                "errors": []
+            }
            
             
         except ValueError as e:
             logger.error(f"Pipeline validation failed: {e}")
             raise
+
+    async def execute_pipeline_definition(
+        self,
+        pipeline_json: Dict[str, Any],
+        user_id: Optional[str],
+        priority: JobPriority
+    ) -> Dict[str, Any]:
+        """Execute a pipeline definition supplied by the API client."""
+        if not pipeline_json:
+            return await self.execute_pipeline(user_id=user_id or "system", priority=priority)
+
+        pipeline = self._pipeline_from_definition(pipeline_json)
+        result = await self.orchestrator._execute_pipeline(pipeline, user_id=user_id, priority=priority)
+        return {
+            "execution_id": str(result.get("execution_id")),
+            "job_id": str(result.get("pipeline_id") or pipeline.id),
+            "status": result.get("status", "started"),
+            "message": "Pipeline execution started successfully",
+            "progress": 0,
+            "optimization": result.get("optimization"),
+            "execution_plan": result.get("execution_plan"),
+            "generated_code_path": result.get("generated_code_path"),
+        }
+
+    def _pipeline_from_definition(self, pipeline_json: Dict[str, Any]) -> Pipeline:
+        return Pipeline.from_dict({
+            "name": pipeline_json.get("name", "Ad hoc Pipeline"),
+            "description": pipeline_json.get("description", "Pipeline submitted from the UI"),
+            "nodes": [
+                {
+                    "id": node["id"],
+                    "name": node.get("name", node["id"]),
+                    "type": self._frontend_node_type(node.get("type", "custom")),
+                    "config": {"parameters": node.get("config", {})},
+                    "metadata": node.get("metadata", {}),
+                    "job": self._job_from_node(node),
+                }
+                for node in pipeline_json.get("nodes", [])
+            ],
+            "edges": pipeline_json.get("edges", []),
+            "tags": pipeline_json.get("tags", []),
+        })
+
+    def _frontend_node_type(self, stage_type: str) -> str:
+        """Map UI stage identifiers to backend node types."""
+        return {
+            "data_collection": NodeType.DATA_INGESTION.value,
+            "preprocessing": NodeType.DATA_PROCESSING.value,
+            "tokenization": NodeType.TOKENIZATION.value,
+            "training": NodeType.MODEL_TRAINING.value,
+            "finetuning": NodeType.MODEL_FINETUNING.value,
+            "evaluation": NodeType.MODEL_EVALUATION.value,
+            "optimization": NodeType.OPTIMIZATION.value,
+            "deployment": NodeType.MODEL_DEPLOYMENT.value,
+        }.get(stage_type, stage_type)
+
+    def _job_from_node(self, node: Dict[str, Any]):
+        job_id = node.get("job_id") or node.get("jobId")
+        if not job_id:
+            return None
+        try:
+            return self._get_job(UUID(str(job_id)))
+        except ValueError:
+            logger.warning("Ignoring invalid pipeline node job_id: %s", job_id)
+            return None
     async def get_execution_logs(
         self,
         execution_id: UUID,

@@ -186,6 +186,7 @@ class PipelineBuilder:
         self,
         name: str,
         node_type: Union[NodeType, str],
+        node_id: Optional[str] = None,
         resources: Optional[Dict[str, Any]] = None,
         retry_policy: Optional[Dict[str, Any]] = None,
         position: Optional[Tuple[float, float] | NodePosition] = None,
@@ -220,7 +221,9 @@ class PipelineBuilder:
             retry_policy=retry_policy or {"max_retries": 3, "strategy": "exponential"}
         )
 
-        node_id = f"node_{uuid4().hex[:8]}"
+        node_id = node_id or f"node_{uuid4().hex[:8]}"
+        if node_id in self.pipeline.nodes:
+            raise ValueError(f"Node {node_id} already exists")
         
         # Create pipeline node
         node = PipelineNode(
@@ -488,6 +491,7 @@ class PipelineBuilder:
         return self.add_node(
             name=template.get("name", f"node_{uuid4().hex[:8]}"),
             node_type=template.get("type", "custom"),
+            node_id=template.get("id"),
             resources=template.get("resources"),
             retry_policy=template.get("retry_policy"),
             position=position,
@@ -654,22 +658,26 @@ class PipelineBuilder:
         
         # Add nodes
         for node_data in data.get("nodes", []):
+            raw_node = node_data.get("node", node_data)
+            raw_position = node_data.get("position", {})
             builder.add_node(
-                name=node_data["name"],
-                node_type=node_data["type"],
+                node_id=raw_node.get("id"),
+                name=raw_node["name"],
+                node_type=raw_node["type"],
                 position=(
-                    node_data["position"]["x"],
-                    node_data["position"]["y"]
-                ) if "position" in node_data else None,
-                metadata=node_data.get("metadata")
+                    raw_position["x"],
+                    raw_position["y"]
+                ) if raw_position else None,
+                metadata=raw_node.get("metadata") or raw_node.get("config", {}).get("parameters")
             )
         
         # Add edges
         for edge_data in data.get("edges", []):
+            raw_edge = edge_data.get("edge", edge_data)
             builder.add_edge(
-                source=edge_data["source"],
-                target=edge_data["target"],
-                condition=edge_data.get("condition"),
+                source=raw_edge.get("source") or raw_edge.get("from"),
+                target=raw_edge.get("target") or raw_edge.get("to"),
+                condition=raw_edge.get("condition"),
                 label=edge_data.get("label")
             )
         
@@ -789,6 +797,7 @@ class PipelineBuilder:
                 visual_node = self.visual_nodes[node_id]
                 
                 sub_builder.add_node(
+                    node_id=node_id,
                     name=node.name,
                     node_type=node.type,
                     resources=node.config.resources,
@@ -826,6 +835,7 @@ class PipelineBuilder:
             node = visual_node.node
             
             self.add_node(
+                node_id=new_node_id,
                 name=node.name,
                 node_type=node.type,
                 resources=node.config.resources,
@@ -861,6 +871,7 @@ class PipelineTemplate:
         
         # Data ingestion
         builder.add_node(
+            node_id="data_loader",
             name="Data Loader",
             node_type=NodeType.DATA_INGESTION,
             metadata={"source": "documents", "format": "pdf"}
@@ -868,6 +879,7 @@ class PipelineTemplate:
         
         # Document processing
         builder.add_node(
+            node_id="doc_processor",
             name="Document Processor",
             node_type=NodeType.DATA_PROCESSING,
             metadata={"chunk_size": 512, "overlap": 50}
@@ -875,6 +887,7 @@ class PipelineTemplate:
         
         # Embedding generation
         builder.add_node(
+            node_id="embedding_gen",
             name="Embedding Generator",
             node_type=NodeType.DATA_PROCESSING,
             metadata={"model": "text-embedding-ada-002"},
@@ -883,6 +896,7 @@ class PipelineTemplate:
         
         # Vector store
         builder.add_node(
+            node_id="vector_store",
             name="Vector Store",
             node_type=NodeType.DATA_PROCESSING,
             metadata={"db": "pinecone", "dimension": 1536}
@@ -890,6 +904,7 @@ class PipelineTemplate:
         
         # LLM fine-tuning
         builder.add_node(
+            node_id="llm_finetune",
             name="LLM Fine-tuning",
             node_type=NodeType.MODEL_TRAINING,
             metadata={"model": "llama2-7b", "epochs": 3},
@@ -898,6 +913,7 @@ class PipelineTemplate:
         
         # Deployment
         builder.add_node(
+            node_id="deploy_rag",
             name="Deploy RAG API",
             node_type=NodeType.MODEL_DEPLOYMENT,
             metadata={"endpoint": "/rag", "replicas": 2}
@@ -918,24 +934,28 @@ class PipelineTemplate:
         builder = PipelineBuilder(name="Classification Pipeline", description="Text classification pipeline")
         
         builder.add_node(
+            node_id="data_ingest",
             name="Load Dataset",
             node_type=NodeType.DATA_INGESTION,
             metadata={"dataset": "imdb", "split": "train"}
         )
         
         builder.add_node(
+            node_id="preprocess",
             name="Text Preprocessing",
             node_type=NodeType.DATA_PROCESSING,
             metadata={"lowercase": True, "remove_stopwords": True}
         )
         
         builder.add_node(
+            node_id="tokenize",
             name="Tokenization",
             node_type=NodeType.DATA_PROCESSING,
             metadata={"tokenizer": "bert-base-uncased", "max_length": 512}
         )
         
         builder.add_node(
+            node_id="train_bert",
             name="Train BERT Classifier",
             node_type=NodeType.MODEL_TRAINING,
             metadata={"model": "bert-base-uncased", "num_labels": 2, "epochs": 5},
@@ -943,12 +963,14 @@ class PipelineTemplate:
         )
         
         builder.add_node(
+            node_id="evaluate",
             name="Evaluate Model",
             node_type=NodeType.MODEL_EVALUATION,
             metadata={"metrics": ["accuracy", "f1", "precision", "recall"]}
         )
         
         builder.add_node(
+            node_id="deploy",
             name="Deploy Classifier",
             node_type=NodeType.MODEL_DEPLOYMENT,
             metadata={"endpoint": "/classify", "batch_size": 32}
@@ -969,18 +991,21 @@ class PipelineTemplate:
         builder = PipelineBuilder(name="LoRA Fine-tuning", description="Parameter-efficient fine-tuning")
         
         builder.add_node(
+            node_id="load_data",
             name="Load Training Data",
             node_type=NodeType.DATA_INGESTION,
             metadata={"format": "instruction", "source": "huggingface"}
         )
         
         builder.add_node(
+            node_id="format_data",
             name="Format as Instructions",
             node_type=NodeType.DATA_PROCESSING,
             metadata={"template": "alpaca", "add_eos": True}
         )
         
         builder.add_node(
+            node_id="apply_lora",
             name="Apply LoRA",
             node_type=NodeType.MODEL_TRAINING,
             metadata={
@@ -994,18 +1019,21 @@ class PipelineTemplate:
         )
         
         builder.add_node(
+            node_id="merge_weights",
             name="Merge LoRA Weights",
             node_type=NodeType.MODEL_TRAINING,
             metadata={"merge_strategy": "linear"}
         )
         
         builder.add_node(
+            node_id="quantize",
             name="Quantize Model",
             node_type=NodeType.MODEL_TRAINING,
             metadata={"bits": 4, "quantization_type": "nf4"}
         )
         
         builder.add_node(
+            node_id="deploy_lora",
             name="Deploy Quantized Model",
             node_type=NodeType.MODEL_DEPLOYMENT,
             metadata={"endpoint": "/generate", "max_tokens": 512}
@@ -1026,12 +1054,14 @@ class PipelineTemplate:
         builder = PipelineBuilder(name="Hyperparameter Tuning", description="Automated hyperparameter search")
         
         builder.add_node(
+            node_id="data_split",
             name="Train/Val Split",
             node_type=NodeType.DATA_PROCESSING,
             metadata={"train_ratio": 0.8, "stratify": True}
         )
         
         builder.add_node(
+            node_id="hpo_search",
             name="Hyperparameter Search",
             node_type=NodeType.MODEL_TRAINING,
             metadata={
@@ -1047,12 +1077,14 @@ class PipelineTemplate:
         )
         
         builder.add_node(
+            node_id="best_model",
             name="Train Best Model",
             node_type=NodeType.MODEL_TRAINING,
             metadata={"use_best_params": True}
         )
         
         builder.add_node(
+            node_id="deploy_best",
             name="Deploy Best Model",
             node_type=NodeType.MODEL_DEPLOYMENT,
             metadata={"version": "best"}
@@ -1071,12 +1103,14 @@ class PipelineTemplate:
         builder = PipelineBuilder(name="Data Preprocessing", description="Pipeline for data cleaning and transformation")
 
         builder.add_node(
+            node_id="data_loader",
             name="Data Loader",
             node_type=NodeType.DATA_INGESTION,
             metadata={"dataset": "imdb", "split": "train"}
         )
 
         builder.add_node(
+            node_id="data_processor",
             name="Data Processor",
             node_type=NodeType.DATA_PROCESSING,
             metadata={"clean_text": True, "normalize": True}
@@ -1093,12 +1127,14 @@ class PipelineTemplate:
         builder = PipelineBuilder(name="Model Deployment", description="Pipeline for deploying trained models")
 
         builder.add_node(
+            node_id="model_loader",
             name="Model Loader",
             node_type=NodeType.DATA_INGESTION,
             metadata={"model_source": "local", "model_path": "/models/bert"}
         )
 
         builder.add_node(
+            node_id="api_server",
             name="API Server",
             node_type=NodeType.MODEL_DEPLOYMENT,
             metadata={"endpoint": "/predict", "replicas": 2}

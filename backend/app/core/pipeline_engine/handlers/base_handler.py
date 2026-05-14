@@ -25,9 +25,12 @@ class BaseHandler(ABC, Generic[T]):
     async def _update_progress(self, job: T, progress: float, message: Optional[str] = None):
         """Update job progress"""
         if job:
-            job.update_progress(progress)
-            await manager.notify_job_update(str(job.job_id), {
-                "status": job.status.value,
+            if hasattr(job, "update_progress"):
+                job.update_progress(progress)
+            status = getattr(getattr(job, "status", None), "value", getattr(job, "status", "running"))
+            job_id = getattr(job, "job_id", job)
+            await manager.notify_job_update(str(job_id), {
+                "status": status,
                 "progress": progress,
                 "message": message
             })
@@ -35,8 +38,10 @@ class BaseHandler(ABC, Generic[T]):
     async def _mark_started(self, job: T):
         """Mark job as started"""
         if job:
-            job.mark_started()
-            await manager.notify_job_update(str(job.job_id), {
+            if hasattr(job, "mark_started"):
+                job.mark_started()
+            job_id = getattr(job, "job_id", job)
+            await manager.notify_job_update(str(job_id), {
                 "status": "running",
                 "progress": 0,
                 "message": "Job started"
@@ -45,8 +50,10 @@ class BaseHandler(ABC, Generic[T]):
     async def _mark_completed(self, job: T, result: Dict[str, Any]):
         """Mark job as completed"""
         if job:
-            job.mark_completed(result)
-            await manager.notify_job_update(str(job.job_id), {
+            if hasattr(job, "mark_completed"):
+                job.mark_completed(result)
+            job_id = getattr(job, "job_id", job)
+            await manager.notify_job_update(str(job_id), {
                 "status": "completed",
                 "progress": 100,
                 "result": result
@@ -55,8 +62,10 @@ class BaseHandler(ABC, Generic[T]):
     async def _mark_failed(self, job: T, error: str):
         """Mark job as failed"""
         if job:
-            job.mark_failed(error)
-            await manager.notify_job_update(str(job.job_id), {
+            if hasattr(job, "mark_failed"):
+                job.mark_failed(error)
+            job_id = getattr(job, "job_id", job)
+            await manager.notify_job_update(str(job_id), {
                 "status": "failed",
                 "error": error
             })
