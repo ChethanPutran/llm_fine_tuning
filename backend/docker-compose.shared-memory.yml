@@ -1,0 +1,55 @@
+services:
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  coordinator:
+    build:
+      context: .
+    command: ["python", "-m", "app.core.shared_memory_orchestration.runner", "coordinator"]
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+    command: ["python", "-m", "app.core.shared_memory_orchestration.runner", "worker"]
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      PIPELINE_WORKERS: "4"
+    depends_on:
+      redis:
+        condition: service_healthy
+      coordinator:
+        condition: service_started
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+volumes:
+  redis_data:
